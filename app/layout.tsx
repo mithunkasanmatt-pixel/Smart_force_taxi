@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { LanguageProvider } from "@/components/layout/language-provider";
+import Script from "next/script";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -51,24 +52,22 @@ export default function RootLayout({
         <ThemeProvider>
           <LanguageProvider>
             {children}
-            <script
-              dangerouslySetInnerHTML={{
-                __html: `
-                  if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                      var unregisteredCount = 0;
-                      for (var i = 0; i < registrations.length; i++) {
-                        registrations[i].unregister();
-                        unregisteredCount++;
-                      }
-                      if (unregisteredCount > 0) {
-                        window.location.reload();
-                      }
-                    });
-                  }
-                `,
-              }}
-            />
+            <Script id="unregister-sw">
+              {`
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    var unregisteredCount = 0;
+                    for (var i = 0; i < registrations.length; i++) {
+                      registrations[i].unregister();
+                      unregisteredCount++;
+                    }
+                    if (unregisteredCount > 0) {
+                      window.location.reload();
+                    }
+                  });
+                }
+              `}
+            </Script>
           </LanguageProvider>
         </ThemeProvider>
       </body>

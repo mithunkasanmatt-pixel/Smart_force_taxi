@@ -16,7 +16,7 @@ import { cn } from "@/utils/cn";
 interface DriverManagerProps {
   drivers: (User & { assignedVehicle?: Vehicle[] })[];
   bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
-  vehicles: Vehicle[];
+  vehicles: (Vehicle & { assignedDriver?: User | null })[];
   currentUserName: string;
 }
 
@@ -24,7 +24,9 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
   const { t } = useTranslation();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDriver, setSelectedDriver] = useState<(User & { assignedVehicle?: Vehicle[] }) | null>((drivers[0] as any) || null);
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(drivers[0]?.id || null);
+  const [allocationVehicleId, setAllocationVehicleId] = useState("");
+  const [confirmReassign, setConfirmReassign] = useState(false);
 
   // Booking Modal State
   const [isBookingOpen, setIsBookingOpen] = useState(false);
@@ -52,7 +54,9 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
     d.employeeId.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const activeDriver = selectedDriver || drivers[0] || null;
+  const activeDriver = useMemo(() => {
+    return drivers.find((d) => d.id === selectedDriverId) || drivers[0] || null;
+  }, [drivers, selectedDriverId]);
 
   // Filter bookings for selected driver
   const driverBookings = activeDriver
@@ -309,14 +313,29 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
 
   const currentAssignedCar = activeDriver?.assignedVehicle?.[0] || null;
 
+  const selectedAllocVehicle = useMemo(() => {
+    return vehicles.find((v) => v.id === allocationVehicleId) || null;
+  }, [vehicles, allocationVehicleId]);
+
+  const isAlreadyAssigned = !!selectedAllocVehicle?.assignedDriver;
+  const currentAssignedDriverName = selectedAllocVehicle?.assignedDriver?.name;
+
   return (
     <div className="space-y-6">
       {/* Title */}
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">Driver Management & Booking</h2>
-        <p className="text-sm text-muted-foreground">
-          View registered drivers, search booking schedules, and reserve vehicle slots on their behalf.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Driver Management & Booking</h2>
+          <p className="text-sm text-muted-foreground">
+            View registered drivers, search booking schedules, and reserve vehicle slots on their behalf.
+          </p>
+        </div>
+        <Button
+          onClick={() => router.push("/register")}
+          className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold shrink-0"
+        >
+          <Plus className="h-4.5 w-4.5 mr-2" /> Register Driver
+        </Button>
       </div>
 
       {/* Main Content Layout */}
@@ -336,14 +355,6 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
           <div className="border border-border rounded-xl bg-card overflow-hidden divide-y divide-border">
             <div className="p-3 bg-muted/20 font-bold text-xs uppercase text-muted-foreground tracking-wider flex justify-between items-center">
               <span>Drivers ({filteredDrivers.length})</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-[10px] bg-primary/15 hover:bg-primary/25 text-primary hover:text-primary font-bold px-2 py-0.5 rounded-lg cursor-pointer"
-                onClick={() => router.push("/register")}
-              >
-                + Register Driver
-              </Button>
             </div>
             <div className="max-h-[550px] overflow-y-auto divide-y divide-border/60">
               {filteredDrivers.map((driver) => {
@@ -352,7 +363,9 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                   <button
                     key={driver.id}
                     onClick={() => {
-                      setSelectedDriver(driver);
+                      setSelectedDriverId(driver.id);
+                      setAllocationVehicleId("");
+                      setConfirmReassign(false);
                       setFormError(null);
                     }}
                     className={`w-full text-left p-4 transition-all duration-150 flex items-center justify-between border-none ${
@@ -439,39 +452,70 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                       </Button>
                     </div>
                   ) : (
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <select
-                        id="assign-vehicle-select"
-                        className="flex h-9 w-full sm:w-64 rounded-lg border border-border bg-input px-3 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
-                        defaultValue=""
-                      >
-                        <option value="" disabled>-- Allocate Vehicle --</option>
-                        {vehicles.map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {v.name} ({v.vehicleNumber})
-                          </option>
-                        ))}
-                      </select>
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          const selectEl = document.getElementById("assign-vehicle-select") as HTMLSelectElement;
-                          const vehicleId = selectEl?.value;
-                          if (!vehicleId) return;
-                          startTransition(async () => {
-                            const res = await assignVehicleToDriver(vehicleId, activeDriver.id);
-                            if (res.error) {
-                              alert(res.error);
-                            } else {
-                              router.refresh();
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <select
+                          id="assign-vehicle-select"
+                          className="flex h-9 w-full sm:w-64 rounded-lg border border-border bg-input px-3 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                          value={allocationVehicleId}
+                          onChange={(e) => {
+                            setAllocationVehicleId(e.target.value);
+                            setConfirmReassign(false);
+                          }}
+                        >
+                          <option value="" disabled>-- Allocate Vehicle --</option>
+                          {vehicles.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.name} ({v.vehicleNumber})
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            if (!allocationVehicleId) return;
+                            if (isAlreadyAssigned && !confirmReassign) {
+                              alert(`Please confirm the reassignment of this vehicle from ${currentAssignedDriverName}.`);
+                              return;
                             }
-                          });
-                        }}
-                        className="bg-primary text-white font-semibold h-9 text-xs cursor-pointer"
-                        disabled={isPending}
-                      >
-                        Allocate Vehicle
-                      </Button>
+                            startTransition(async () => {
+                              const res = await assignVehicleToDriver(allocationVehicleId, activeDriver.id);
+                              if (res.error) {
+                                alert(res.error);
+                              } else {
+                                setAllocationVehicleId("");
+                                setConfirmReassign(false);
+                                router.refresh();
+                              }
+                            });
+                          }}
+                          className="bg-primary text-white font-semibold h-9 text-xs cursor-pointer"
+                          disabled={isPending || (isAlreadyAssigned && !confirmReassign)}
+                        >
+                          Allocate Vehicle
+                        </Button>
+                      </div>
+
+                      {/* Display assignment details and confirm option */}
+                      {allocationVehicleId && isAlreadyAssigned && (
+                        <div className="border border-amber-500/30 rounded-lg p-3 bg-amber-500/5 space-y-2 max-w-xl">
+                          <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
+                            ⚠️ This vehicle is currently permanently assigned to <strong>{currentAssignedDriverName}</strong>.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id="confirm-reassign-checkbox"
+                              checked={confirmReassign}
+                              onChange={(e) => setConfirmReassign(e.target.checked)}
+                              className="h-4 w-4 rounded border-border text-primary focus:ring-primary bg-input cursor-pointer"
+                            />
+                            <label htmlFor="confirm-reassign-checkbox" className="text-xs text-foreground font-semibold cursor-pointer">
+                              Confirm reassignment of this vehicle
+                            </label>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -531,7 +575,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs border-t border-border/30 pt-2.5 mt-2.5">
                         <div className="flex items-center gap-1.5 text-muted-foreground">
                           <Clock className="h-3.5 w-3.5" />
-                          <span>
+                          <span suppressHydrationWarning>
                             {new Date(b.startTime).toLocaleString([], { dateStyle: "short", timeStyle: "short" })} - {new Date(b.endTime).toLocaleTimeString([], { timeStyle: "short" })}
                           </span>
                         </div>
@@ -586,7 +630,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs border-t border-border/20 pt-2 mt-2">
                         <div className="flex items-center gap-1.5 text-muted-foreground">
                           <Clock className="h-3.5 w-3.5" />
-                          <span>
+                          <span suppressHydrationWarning>
                             {new Date(b.startTime).toLocaleString([], { dateStyle: "short", timeStyle: "short" })} - {new Date(b.endTime).toLocaleTimeString([], { timeStyle: "short" })}
                           </span>
                         </div>
@@ -789,7 +833,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                         </div>
                         <div>
                           <span className="text-muted-foreground block text-[9px]">Schedule</span>
-                          <span className="font-semibold">
+                          <span className="font-semibold" suppressHydrationWarning>
                             {new Date(clickedBookedSlot.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {new Date(clickedBookedSlot.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                           </span>
                         </div>

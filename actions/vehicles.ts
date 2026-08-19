@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { VehicleStatus } from "@prisma/client";
 import { v2 as cloudinary } from "cloudinary";
+import { sendVehicleReassignmentEmail } from "@/lib/notifications";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -158,19 +159,45 @@ export async function deleteVehicle(id: string) {
 
 export async function assignVehicleToDriver(vehicleId: string, driverId: string | null) {
   try {
+    // 1. Fetch current vehicle and its assigned driver (if any)
+    const vehicle = await db.vehicle.findUnique({
+      where: { id: vehicleId },
+      include: { assignedDriver: true },
+    });
+
+    if (!vehicle) {
+      return { error: "Vehicle not found" };
+    }
+
+    const previousDriver = vehicle.assignedDriver;
+
     if (driverId) {
-      // Clear any other vehicle assigned to this driver
+      // Clear any other vehicle assigned to the new driver
       await db.vehicle.updateMany({
         where: { assignedDriverId: driverId },
         data: { assignedDriverId: null },
       });
     }
 
-    // Assign the selected vehicle
+    // 2. Assign the selected vehicle to the new driver
     await db.vehicle.update({
       where: { id: vehicleId },
       data: { assignedDriverId: driverId },
     });
+
+    // 3. If there was a previous driver, and they are not the new driver, send them an email
+    if (previousDriver && previousDriver.id !== driverId) {
+      try {
+        await sendVehicleReassignmentEmail(
+          previousDriver.email,
+          previousDriver.name,
+          vehicle.name,
+          vehicle.vehicleNumber
+        );
+      } catch (emailError) {
+        console.error("Error sending vehicle reassignment email:", emailError);
+      }
+    }
 
     revalidatePath("/admin/drivers");
     revalidatePath("/driver");
