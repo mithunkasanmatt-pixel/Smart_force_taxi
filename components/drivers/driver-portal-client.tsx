@@ -15,6 +15,7 @@ interface DriverPortalClientProps {
   bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
   activeTrip: (Trip & { vehicle: Vehicle }) | null;
   logs: WeeklyLog[];
+  todayBookings: Trip[];
 }
 
 export function DriverPortalClient({
@@ -25,6 +26,7 @@ export function DriverPortalClient({
   bookings,
   activeTrip,
   logs,
+  todayBookings,
 }: DriverPortalClientProps) {
   const { activeTab } = useDriverTab();
   const [mounted, setMounted] = useState(false);
@@ -52,6 +54,7 @@ export function DriverPortalClient({
           vehicles={vehicles}
           bookings={bookings}
           activeTrip={activeTrip}
+          todayBookings={todayBookings}
         />
       </div>
       <div className={activeTab === "vehicles" ? "block" : "hidden"}>

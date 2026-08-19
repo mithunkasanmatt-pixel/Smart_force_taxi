@@ -67,6 +67,27 @@ export default async function DriverDashboard() {
     orderBy: { uploadedAt: "desc" },
   });
 
+  // Find all bookings of this driver for today (including completed ones, excluding cancelled ones)
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayStart.getDate() + 1);
+
+  const todayBookings = await db.trip.findMany({
+    where: {
+      driverId: driver.id,
+      status: {
+        notIn: ["CANCELLED"],
+      },
+      startTime: {
+        lt: todayEnd,
+      },
+      endTime: {
+        gt: todayStart,
+      },
+    },
+  });
+
   return (
     <DriverPortalClient
       driver={driver}
@@ -76,6 +97,7 @@ export default async function DriverDashboard() {
       bookings={bookings}
       activeTrip={activeTrip}
       logs={logs}
+      todayBookings={todayBookings}
     />
   );
 }

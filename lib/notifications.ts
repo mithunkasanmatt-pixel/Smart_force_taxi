@@ -192,3 +192,149 @@ Smart Force Taxi Operations Team`;
   }
 }
 
+/**
+ * Sends a booking confirmation email to the driver
+ */
+export async function sendBookingConfirmationEmail(
+  email: string,
+  name: string,
+  vehicleName: string,
+  startTime: Date,
+  endTime: Date,
+  durationText: string
+) {
+  const from = process.env.SMTP_FROM || `"Smart Force Taxi" <noreply@smartforcetaxi.com>`;
+  const subject = "Booking Confirmation - Smart Force Taxi";
+  
+  const bookingDate = new Date(startTime).toLocaleDateString();
+  const startStr = new Date(startTime).toLocaleString();
+  const endStr = new Date(endTime).toLocaleString();
+
+  const text = `Hello ${name},
+
+Your vehicle booking has been confirmed.
+
+Here are the details:
+- Driver Name: ${name}
+- Vehicle: ${vehicleName}
+- Booking Date: ${bookingDate}
+- Start Time: ${startStr}
+- End Time: ${endStr}
+- Duration: ${durationText}
+
+Best regards,
+Smart Force Taxi Operations Team`;
+
+  const html = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; border-radius: 8px;">
+    <h2 style="color: #10b981; margin-top: 0;">Booking Confirmation</h2>
+    <p>Hello <strong>${name}</strong>,</p>
+    <p>Your vehicle booking has been successfully confirmed. Please find the details below:</p>
+    <div style="background-color: #f0fdf4; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #dcfce7;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #14532d; width: 120px;">Driver Name:</td>
+          <td style="padding: 6px 0;">${name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #14532d;">Vehicle:</td>
+          <td style="padding: 6px 0;">${vehicleName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #14532d;">Booking Date:</td>
+          <td style="padding: 6px 0;">${bookingDate}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #14532d;">Start Time:</td>
+          <td style="padding: 6px 0;">${startStr}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #14532d;">End Time:</td>
+          <td style="padding: 6px 0;">${endStr}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #14532d;">Duration:</td>
+          <td style="padding: 6px 0; font-weight: bold;">${durationText}</td>
+        </tr>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: #a1a1aa; margin-top: 30px; border-top: 1px solid #e4e4e7; padding-top: 15px;">
+      This is an automated operational message. Please do not reply directly to this email.
+    </p>
+  </div>`;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to: email,
+      subject,
+      text,
+      html,
+    });
+    console.log(`Booking confirmation email sent successfully to: ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to send booking confirmation email:", error);
+    return { error };
+  }
+}
+
+/**
+ * Sends a car availability broadcast email to all drivers
+ */
+export async function sendCarAvailabilityBroadcastEmail(
+  drivers: { email: string; name: string }[],
+  vehicleName: string,
+  vehicleNumber: string
+) {
+  const from = process.env.SMTP_FROM || `"Smart Force Taxi" <noreply@smartforcetaxi.com>`;
+  const subject = `Vehicle Available for Booking: ${vehicleName}`;
+
+  for (const driver of drivers) {
+    if (!driver.email) continue;
+
+    const text = `Hello ${driver.name},
+
+Good news! The vehicle ${vehicleName} (Plate Number: ${vehicleNumber}) has become available for booking again.
+
+If you need this vehicle for your shift, please log in to the Driver Portal and book your slot.
+
+Best regards,
+Smart Force Taxi Operations Team`;
+
+    const html = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; border-radius: 8px;">
+      <h2 style="color: #10b981; margin-top: 0;">Vehicle Available for Booking</h2>
+      <p>Hello <strong>${driver.name}</strong>,</p>
+      <p>Please be informed that a vehicle has become available again for booking:</p>
+      <div style="background-color: #f0fdf4; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #dcfce7;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+          <tr>
+            <td style="padding: 6px 0; font-weight: bold; color: #14532d; width: 120px;">Vehicle:</td>
+            <td style="padding: 6px 0;">${vehicleName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; font-weight: bold; color: #14532d;">Plate Number:</td>
+            <td style="padding: 6px 0; font-family: monospace;">${vehicleNumber}</td>
+          </tr>
+        </table>
+      </div>
+      <p>You can now book this vehicle from your Driver Portal.</p>
+      <p style="font-size: 12px; color: #a1a1aa; margin-top: 30px; border-top: 1px solid #e4e4e7; padding-top: 15px;">
+        This is an automated operational message. Please do not reply directly to this email.
+      </p>
+    </div>`;
+
+    try {
+      await transporter.sendMail({
+        from,
+        to: driver.email,
+        subject,
+        text,
+        html,
+      });
+      console.log(`Car availability broadcast email sent to: ${driver.email}`);
+    } catch (error) {
+      console.error(`Failed to send car availability broadcast email to ${driver.email}:`, error);
+    }
+  }
+}
+

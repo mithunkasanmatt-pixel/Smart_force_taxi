@@ -52,8 +52,8 @@ export default function LoginPage() {
         password: data.password,
       });
 
-      if (result?.error && !result?.ok) {
-        setError("Invalid email or password");
+      if (result?.error) {
+        setError("Invalid username or password");
         setIsLoading(false);
       } else {
         router.refresh();
