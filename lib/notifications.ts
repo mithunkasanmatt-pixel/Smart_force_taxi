@@ -338,3 +338,62 @@ Smart Force Taxi Operations Team`;
   }
 }
 
+/**
+ * Sends a vehicle reassignment notification email to the previous driver
+ */
+export async function sendVehicleReassignmentEmail(
+  email: string,
+  name: string,
+  vehicleName: string,
+  vehicleNumber: string
+) {
+  const from = process.env.SMTP_FROM || `"Smart Force Taxi" <noreply@smartforcetaxi.com>`;
+  const subject = `Vehicle Reassigned: ${vehicleName}`;
+  const text = `Hello ${name},
+
+We are writing to inform you that the vehicle ${vehicleName} (Plate Number: ${vehicleNumber}) previously assigned to you has been permanently reassigned to another driver.
+
+Consequently, this vehicle has been removed from your permanent vehicle allocation.
+
+If you have any questions, please contact the administrator.
+
+Best regards,
+Smart Force Taxi Operations Team`;
+
+  const html = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; border-radius: 8px;">
+    <h2 style="color: #ea580c;">Vehicle Reassignment Notice</h2>
+    <p>Hello <strong>${name}</strong>,</p>
+    <p>We are writing to inform you that the vehicle previously assigned to you has been permanently reassigned to another driver:</p>
+    <div style="background-color: #fff7ed; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #ffedd5;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #c2410c; width: 120px;">Vehicle:</td>
+          <td style="padding: 6px 0;">${vehicleName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #c2410c;">Plate Number:</td>
+          <td style="padding: 6px 0; font-family: monospace;">${vehicleNumber}</td>
+        </tr>
+      </table>
+    </div>
+    <p>This vehicle is now permanently assigned to another driver and has been removed from your permanent vehicle allocation.</p>
+    <p style="font-size: 12px; color: #a1a1aa; margin-top: 30px; border-top: 1px solid #e4e4e7; padding-top: 15px;">
+      This is an automated operational message. Please do not reply directly to this email.
+    </p>
+  </div>`;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to: email,
+      subject,
+      text,
+      html,
+    });
+    console.log(`Vehicle reassignment email sent successfully to: ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to send vehicle reassignment email:", error);
+    return { error };
+  }
+}

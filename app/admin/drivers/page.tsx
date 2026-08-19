@@ -39,6 +39,9 @@ export default async function DriversPage() {
 
   // Fetch all active vehicles for the booking dropdown
   const vehicles = await db.vehicle.findMany({
+    include: {
+      assignedDriver: true,
+    },
     orderBy: {
       name: "asc",
     },
