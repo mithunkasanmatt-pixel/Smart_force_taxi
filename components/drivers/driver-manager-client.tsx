@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { bookCarAction } from "@/actions/driver-trips";
 import { assignVehicleToDriver } from "@/actions/vehicles";
-import { Search, Plus, Clock, MapPin, CheckCircle2, ChevronRight, UserCheck } from "lucide-react";
+import { Search, Plus, Clock, MapPin, CheckCircle2, ChevronRight, UserCheck, Truck } from "lucide-react";
 import { useTranslation } from "@/components/layout/language-provider";
 import { useRouter } from "next/navigation";
 import { cn } from "@/utils/cn";
@@ -402,9 +402,22 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                   <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Permanent Vehicle Allocation</span>
                   {currentAssignedCar ? (
                     <div className="flex items-center justify-between bg-primary/5 p-3 rounded-lg border border-primary/20">
-                      <div>
-                        <span className="text-xs text-foreground font-bold">{currentAssignedCar.name}</span>
-                        <span className="text-[10px] text-muted-foreground block font-mono ml-2">({currentAssignedCar.vehicleNumber})</span>
+                      <div className="flex items-center gap-2">
+                        {(currentAssignedCar as any).imageUrl ? (
+                          <img 
+                            src={(currentAssignedCar as any).imageUrl} 
+                            alt={currentAssignedCar.name} 
+                            className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
+                            <Truck className="h-4.5 w-4.5 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-xs text-foreground font-bold">{currentAssignedCar.name}</span>
+                          <span className="text-[10px] text-muted-foreground block font-mono">({currentAssignedCar.vehicleNumber})</span>
+                        </div>
                       </div>
                       <Button
                         size="sm"
@@ -474,9 +487,22 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                   {upcomingBookings.map((b) => (
                     <div key={b.id} className="p-4 border border-border/60 rounded-xl bg-muted/10 glass space-y-2">
                       <div className="flex justify-between items-start">
-                        <div>
-                          <span className="font-bold text-sm text-foreground">{b.vehicle?.name}</span>
-                          <span className="text-xs text-muted-foreground block font-mono">{b.vehicle?.vehicleNumber}</span>
+                        <div className="flex items-center gap-2">
+                          {(b.vehicle as any)?.imageUrl ? (
+                            <img 
+                              src={(b.vehicle as any).imageUrl} 
+                              alt={b.vehicle?.name} 
+                              className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
+                              <Truck className="h-4.5 w-4.5 text-muted-foreground" />
+                            </div>
+                          )}
+                          <div>
+                            <span className="font-bold text-sm text-foreground block">{b.vehicle?.name}</span>
+                            <span className="text-xs text-muted-foreground block font-mono">{b.vehicle?.vehicleNumber}</span>
+                          </div>
                         </div>
                         <Badge variant="info" className="uppercase text-[9px]">{b.status}</Badge>
                       </div>
@@ -516,9 +542,22 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                   {pastBookings.map((b) => (
                     <div key={b.id} className="p-4 border border-border/40 rounded-xl bg-muted/5 space-y-2 opacity-85">
                       <div className="flex justify-between items-start">
-                        <div>
-                          <span className="font-medium text-sm text-foreground">{b.vehicle?.name}</span>
-                          <span className="text-xs text-muted-foreground block font-mono">{b.vehicle?.vehicleNumber}</span>
+                        <div className="flex items-center gap-2">
+                          {(b.vehicle as any)?.imageUrl ? (
+                            <img 
+                              src={(b.vehicle as any).imageUrl} 
+                              alt={b.vehicle?.name} 
+                              className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
+                              <Truck className="h-4.5 w-4.5 text-muted-foreground" />
+                            </div>
+                          )}
+                          <div>
+                            <span className="font-medium text-sm text-foreground block">{b.vehicle?.name}</span>
+                            <span className="text-xs text-muted-foreground block font-mono">{b.vehicle?.vehicleNumber}</span>
+                          </div>
                         </div>
                         <Badge variant="secondary" className="uppercase text-[9px]">{b.status}</Badge>
                       </div>

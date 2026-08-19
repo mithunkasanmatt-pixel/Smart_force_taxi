@@ -217,7 +217,22 @@ export default async function AdminDashboard() {
                   {availableCars.map((car) => (
                     <TableRow key={car.id}>
                       <TableCell className="font-semibold text-foreground">
-                        {car.name} <span className="text-xs text-muted-foreground block">{car.brand} {car.model} ({car.year})</span>
+                        <div className="flex items-center gap-2">
+                          {(car as any).imageUrl ? (
+                            <img 
+                              src={(car as any).imageUrl} 
+                              alt={car.name} 
+                              className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
+                              <Truck className="h-4.5 w-4.5 text-muted-foreground" />
+                            </div>
+                          )}
+                          <div>
+                            {car.name} <span className="text-xs text-muted-foreground block">{car.brand} {car.model} ({car.year})</span>
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell className="font-mono text-primary font-bold text-xs">{car.vehicleNumber}</TableCell>
                       <TableCell className="text-xs font-semibold">{car.seatingCapacity} Seater</TableCell>
@@ -250,9 +265,22 @@ export default async function AdminDashboard() {
                 {bookedCars.map((car) => (
                   <div key={car.id} className="border border-border/60 rounded-xl p-4 bg-muted/20 space-y-3 glass">
                     <div className="flex justify-between items-start">
-                      <div>
-                        <span className="font-bold text-sm text-foreground">{car.name}</span>
-                        <span className="text-xs text-muted-foreground block">{car.brand} {car.model}</span>
+                      <div className="flex items-center gap-2">
+                        {(car as any).imageUrl ? (
+                          <img 
+                            src={(car as any).imageUrl} 
+                            alt={car.name} 
+                            className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
+                            <Truck className="h-4.5 w-4.5 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div>
+                          <span className="font-bold text-sm text-foreground block">{car.name}</span>
+                          <span className="text-xs text-muted-foreground block">{car.brand} {car.model}</span>
+                        </div>
                       </div>
                       <Badge variant="outline" className="font-mono text-[10px] text-primary border-primary/20 bg-primary/5">{car.vehicleNumber}</Badge>
                     </div>
@@ -322,9 +350,22 @@ export default async function AdminDashboard() {
                         </TableCell>
                         <TableCell>
                           {activeTrip ? (
-                            <div className="flex flex-col">
-                              <span className="font-medium text-xs text-foreground">{activeTrip.vehicle?.name}</span>
-                              <span className="font-mono text-[10px] text-primary font-bold">{activeTrip.vehicle?.vehicleNumber}</span>
+                            <div className="flex items-center gap-2">
+                              {(activeTrip.vehicle as any)?.imageUrl ? (
+                                <img 
+                                  src={(activeTrip.vehicle as any).imageUrl} 
+                                  alt={activeTrip.vehicle?.name} 
+                                  className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
+                                  <Truck className="h-4.5 w-4.5 text-muted-foreground" />
+                                </div>
+                              )}
+                              <div className="flex flex-col">
+                                <span className="font-medium text-xs text-foreground">{activeTrip.vehicle?.name}</span>
+                                <span className="font-mono text-[10px] text-primary font-bold">{activeTrip.vehicle?.vehicleNumber}</span>
+                              </div>
                             </div>
                           ) : (
                             <span className="text-muted-foreground text-xs italic">—</span>

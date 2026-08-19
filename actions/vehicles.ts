@@ -3,6 +3,13 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { VehicleStatus } from "@prisma/client";
+import { v2 as cloudinary } from "cloudinary";
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 export async function createVehicle(data: {
   vehicleNumber: string;
@@ -21,8 +28,21 @@ export async function createVehicle(data: {
   carType?: string;
   ownershipType?: string;
   notes?: string;
+  imageUrl?: string;
+  base64Image?: string;
 }) {
   try {
+    let imageUrl = data.imageUrl || null;
+
+    if (data.base64Image) {
+      console.log("Uploading vehicle image to Cloudinary...");
+      const uploadResult = await cloudinary.uploader.upload(data.base64Image, {
+        folder: "vehicles",
+      });
+      imageUrl = uploadResult.secure_url;
+      console.log("Cloudinary upload successful:", imageUrl);
+    }
+
     await db.vehicle.create({
       data: {
         vehicleNumber: data.vehicleNumber,
@@ -41,6 +61,7 @@ export async function createVehicle(data: {
         carType: data.carType || null,
         ownershipType: data.ownershipType || null,
         notes: data.notes || null,
+        imageUrl: imageUrl,
       },
     });
     revalidatePath("/admin/vehicles");
@@ -72,9 +93,22 @@ export async function updateVehicle(
     carType?: string;
     ownershipType?: string;
     notes?: string;
+    imageUrl?: string;
+    base64Image?: string;
   }
 ) {
   try {
+    let imageUrl = data.imageUrl !== undefined ? data.imageUrl : null;
+
+    if (data.base64Image) {
+      console.log("Uploading updated vehicle image to Cloudinary...");
+      const uploadResult = await cloudinary.uploader.upload(data.base64Image, {
+        folder: "vehicles",
+      });
+      imageUrl = uploadResult.secure_url;
+      console.log("Cloudinary upload successful:", imageUrl);
+    }
+
     await db.vehicle.update({
       where: { id },
       data: {
@@ -94,6 +128,7 @@ export async function updateVehicle(
         carType: data.carType || null,
         ownershipType: data.ownershipType || null,
         notes: data.notes || null,
+        imageUrl: imageUrl,
       },
     });
     revalidatePath("/admin/vehicles");

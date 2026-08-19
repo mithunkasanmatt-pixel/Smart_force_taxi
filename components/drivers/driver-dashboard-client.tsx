@@ -467,7 +467,15 @@ export function DriverDashboardClient({
                         : "border-border bg-card text-foreground hover:bg-muted/10"
                     )}
                   >
-                    <Truck className="h-3.5 w-3.5 shrink-0" />
+                    {(car as any).imageUrl ? (
+                      <img 
+                        src={(car as any).imageUrl} 
+                        alt={car.name} 
+                        className="w-6 h-6 rounded-full object-cover border border-border shrink-0" 
+                      />
+                    ) : (
+                      <Truck className="h-3.5 w-3.5 shrink-0" />
+                    )}
                     {car.name} ({car.vehicleNumber})
                     {isAssigned && <span className="text-[9px] bg-amber-500 text-zinc-950 px-1.5 py-0.5 rounded font-bold ml-1 uppercase tracking-wider">Assigned</span>}
                   </button>
@@ -491,8 +499,18 @@ export function DriverDashboardClient({
                   <Truck className="h-5 w-5 text-primary" />
                   Booking Slot
                 </CardTitle>
-                <CardDescription>
-                  Active Vehicle: <span className="font-bold text-primary font-mono">{selectedVehicle.name} ({selectedVehicle.vehicleNumber})</span>
+                <CardDescription className="flex items-center gap-2 mt-1">
+                  Active Vehicle: 
+                  {(selectedVehicle as any).imageUrl ? (
+                    <img 
+                      src={(selectedVehicle as any).imageUrl} 
+                      alt={selectedVehicle.name} 
+                      className="w-6 h-6 rounded object-cover border border-border shrink-0 ml-1" 
+                    />
+                  ) : (
+                    <span className="w-5 h-5 rounded bg-muted flex items-center justify-center border border-border shrink-0 ml-1"><Truck className="h-3 w-3 text-muted-foreground" /></span>
+                  )}
+                  <span className="font-bold text-primary font-mono">{selectedVehicle.name} ({selectedVehicle.vehicleNumber})</span>
                 </CardDescription>
               </div>
               <Button
@@ -789,9 +807,22 @@ export function DriverDashboardClient({
                     <span className="font-mono text-primary font-bold">{b.tripNumber}</span>
                     <Badge variant="warning">{b.status}</Badge>
                   </div>
-                  <div>
-                    <span className="font-semibold block">{b.vehicle?.name || "Vehicle"} ({b.vehicle?.vehicleNumber || "—"})</span>
-                    <span className="text-muted-foreground block">{b.pickup} ➔ {b.destination}</span>
+                  <div className="flex items-center gap-2">
+                    {(b.vehicle as any)?.imageUrl ? (
+                      <img 
+                        src={(b.vehicle as any).imageUrl} 
+                        alt={b.vehicle?.name} 
+                        className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
+                        <Truck className="h-4.5 w-4.5 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div>
+                      <span className="font-semibold block">{b.vehicle?.name || "Vehicle"} ({b.vehicle?.vehicleNumber || "—"})</span>
+                      <span className="text-muted-foreground block">{b.pickup} ➔ {b.destination}</span>
+                    </div>
                   </div>
                   <div className="text-[10px] text-muted-foreground font-mono">
                     {mounted ? `📅 ${new Date(b.startTime).toLocaleDateString()} · ${new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}
