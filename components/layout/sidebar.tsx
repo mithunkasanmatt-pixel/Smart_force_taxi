@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  Calendar,
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ export function Sidebar({ role }: SidebarProps) {
     { href: "/admin", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/admin/vehicles", label: t("vehicles"), icon: Truck },
     { href: "/admin/drivers", label: t("drivers"), icon: Users },
+    { href: "/admin/bookings", label: "Booking History", icon: Calendar },
     { href: "/admin/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
   ];
 

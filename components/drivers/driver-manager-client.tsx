@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
-import { bookCarAction } from "@/actions/driver-trips";
+import { bookCarAction, cancelBookingAction } from "@/actions/driver-trips";
 import { assignVehicleToDriver } from "@/actions/vehicles";
 import { Search, Plus, Clock, MapPin, CheckCircle2, ChevronRight, UserCheck, Truck } from "lucide-react";
 import { useTranslation } from "@/components/layout/language-provider";
@@ -504,7 +504,29 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                             <span className="text-xs text-muted-foreground block font-mono">{b.vehicle?.vehicleNumber}</span>
                           </div>
                         </div>
-                        <Badge variant="info" className="uppercase text-[9px]">{b.status}</Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="info" className="uppercase text-[9px]">{b.status}</Badge>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-6 text-[10px] px-2 py-0.5 font-bold"
+                            onClick={async () => {
+                              if (confirm("Are you sure you want to cancel this booking?")) {
+                                startTransition(async () => {
+                                  const res = await cancelBookingAction(b.id);
+                                  if (res.error) {
+                                    alert(res.error);
+                                  } else {
+                                    router.refresh();
+                                  }
+                                });
+                              }
+                            }}
+                            disabled={isPending}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs border-t border-border/30 pt-2.5 mt-2.5">
                         <div className="flex items-center gap-1.5 text-muted-foreground">

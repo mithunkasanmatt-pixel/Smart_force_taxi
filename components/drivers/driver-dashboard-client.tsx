@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
-import { bookCarAction } from "@/actions/driver-trips";
+import { bookCarAction, cancelBookingAction, cancelUserBookingAction } from "@/actions/driver-trips";
 import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useTranslation } from "@/components/layout/language-provider";
@@ -20,6 +20,7 @@ interface DriverDashboardClientProps {
   vehicles: Vehicle[];
   bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
   activeTrip: (Trip & { vehicle: Vehicle }) | null;
+  todayBookings: Trip[];
 }
 
 export function DriverDashboardClient({
@@ -29,6 +30,7 @@ export function DriverDashboardClient({
   vehicles,
   bookings,
   activeTrip,
+  todayBookings,
 }: DriverDashboardClientProps) {
   const { t } = useTranslation();
   const [isPending, startTransition] = useTransition();
@@ -58,6 +60,24 @@ export function DriverDashboardClient({
   const [showSundayPopup, setShowSundayPopup] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<string | null>(null);
+
+  const [hoveredImage, setHoveredImage] = useState<string | null>(null);
+  const [activePreviewImage, setActivePreviewImage] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  const handleMouseEnter = (imgUrl: string) => {
+    if (typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches) {
+      setHoveredImage(imgUrl);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredImage(null);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setMousePos({ x: e.clientX, y: e.clientY });
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -242,6 +262,70 @@ export function DriverDashboardClient({
     return slots;
   }, [selectedDate]);
 
+  // Calculate today's duration and status rules based on todayBookings prop
+  const todayBookingsInfo = React.useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    // Filter bookings (trips) for this driver on this day
+    const list = todayBookings.filter((b) => {
+      if (b.driverId !== driver.id || b.status === "CANCELLED") return false;
+      const bStart = new Date(b.startTime);
+      const bEnd = new Date(b.endTime);
+      return bStart < tomorrow && bEnd > today;
+    });
+
+    const durationMs = list.reduce((sum, b) => {
+      const bStart = new Date(b.startTime);
+      const bEnd = new Date(b.endTime);
+      const clampedStart = bStart < today ? today : bStart;
+      const clampedEnd = bEnd > tomorrow ? tomorrow : bEnd;
+      return sum + Math.max(0, clampedEnd.getTime() - clampedStart.getTime());
+    }, 0);
+
+    const hrs = durationMs / (1000 * 60 * 60);
+    
+    let statusText = "Normal Duration";
+    let colorClass = "bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400";
+    let descText = "Your booking duration is in the standard range.";
+
+    if (hrs === 0) {
+      statusText = "No Booking";
+      colorClass = "bg-muted/40 border border-border text-muted-foreground";
+      descText = "You have no bookings scheduled for today.";
+    } else if (hrs >= 4 && hrs < 6) {
+      statusText = "Too Short / Needs Improvement";
+      colorClass = "bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400";
+      descText = "Booking duration is too short. Please adjust if possible.";
+    } else if (hrs >= 6 && hrs < 8) {
+      statusText = "Needs More Duration";
+      colorClass = "bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400";
+      descText = "Please add more booking duration to your shift if possible.";
+    } else if (hrs >= 11) {
+      statusText = "Good Duration / Good Time Slot";
+      colorClass = "bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400";
+      descText = "Great! You have a good booking duration scheduled for today.";
+    }
+
+    const formatHrsMins = (h: number) => {
+      const hours = Math.floor(h);
+      const mins = Math.round((h - hours) * 60);
+      if (hours === 0) return `${mins}m`;
+      return `${hours}h ${mins}m`;
+    };
+
+    return {
+      hours: hrs,
+      formattedDuration: formatHrsMins(hrs),
+      statusText,
+      colorClass,
+      descText,
+      bookingsCount: list.length,
+    };
+  }, [todayBookings, driver.id]);
+
   const isSlotBooked = (slot: any) => {
     const slotStart = new Date(slot.startStr);
     const slotEnd = new Date(slot.endStr);
@@ -394,6 +478,30 @@ export function DriverDashboardClient({
         </div>
       </div>
 
+      {/* Today's Booking Duration Card */}
+      <Card className="border-border bg-card text-foreground">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-bold">Today's Booking Summary</CardTitle>
+          <CardDescription>Your total scheduled booking time and status rating for today.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className={cn("p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4", todayBookingsInfo.colorClass)}>
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">Booking Status Rating</span>
+              <div className="text-lg font-extrabold flex items-center gap-2">
+                {todayBookingsInfo.statusText}
+              </div>
+              <p className="text-xs opacity-90">{todayBookingsInfo.descText}</p>
+            </div>
+            <div className="text-left sm:text-right shrink-0 border-t sm:border-t-0 sm:border-l border-current/25 pt-3 sm:pt-0 sm:pl-6">
+              <span className="text-[10px] uppercase font-bold tracking-wider block opacity-80">Total Duration</span>
+              <span className="text-2xl font-black block tracking-tight">{todayBookingsInfo.formattedDuration}</span>
+              <span className="text-[10px] block opacity-85 mt-0.5">{todayBookingsInfo.bookingsCount} booking{todayBookingsInfo.bookingsCount !== 1 ? 's' : ''} today</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Fleet Vehicles Slot Booking Calendar (Design inspired by reference image) */}
       {/* 1. SELECT VEHICLE SECTION */}
       {!selectedVehicle && (
@@ -471,10 +579,19 @@ export function DriverDashboardClient({
                       <img 
                         src={(car as any).imageUrl} 
                         alt={car.name} 
-                        className="w-6 h-6 rounded-full object-cover border border-border shrink-0" 
+                        className="w-12 h-12 rounded-full object-cover border border-border shrink-0 cursor-zoom-in" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActivePreviewImage((car as any).imageUrl);
+                        }}
+                        onMouseEnter={() => handleMouseEnter((car as any).imageUrl)}
+                        onMouseLeave={handleMouseLeave}
+                        onMouseMove={handleMouseMove}
                       />
                     ) : (
-                      <Truck className="h-3.5 w-3.5 shrink-0" />
+                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center border border-border shrink-0">
+                        <Truck className="h-6 w-6 text-muted-foreground" />
+                      </div>
                     )}
                     {car.name} ({car.vehicleNumber})
                     {isAssigned && <span className="text-[9px] bg-amber-500 text-zinc-950 px-1.5 py-0.5 rounded font-bold ml-1 uppercase tracking-wider">Assigned</span>}
@@ -505,10 +622,17 @@ export function DriverDashboardClient({
                     <img 
                       src={(selectedVehicle as any).imageUrl} 
                       alt={selectedVehicle.name} 
-                      className="w-6 h-6 rounded object-cover border border-border shrink-0 ml-1" 
+                      className="w-16 h-16 rounded object-cover border border-border shrink-0 ml-1 cursor-zoom-in" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActivePreviewImage((selectedVehicle as any).imageUrl);
+                      }}
+                      onMouseEnter={() => handleMouseEnter((selectedVehicle as any).imageUrl)}
+                      onMouseLeave={handleMouseLeave}
+                      onMouseMove={handleMouseMove}
                     />
                   ) : (
-                    <span className="w-5 h-5 rounded bg-muted flex items-center justify-center border border-border shrink-0 ml-1"><Truck className="h-3 w-3 text-muted-foreground" /></span>
+                    <span className="w-16 h-16 rounded bg-muted flex items-center justify-center border border-border shrink-0 ml-1"><Truck className="h-8 w-8 text-muted-foreground" /></span>
                   )}
                   <span className="font-bold text-primary font-mono">{selectedVehicle.name} ({selectedVehicle.vehicleNumber})</span>
                 </CardDescription>
@@ -812,11 +936,18 @@ export function DriverDashboardClient({
                       <img 
                         src={(b.vehicle as any).imageUrl} 
                         alt={b.vehicle?.name} 
-                        className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                        className="w-16 h-16 rounded object-cover border border-border shrink-0 cursor-zoom-in" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActivePreviewImage((b.vehicle as any).imageUrl);
+                        }}
+                        onMouseEnter={() => handleMouseEnter((b.vehicle as any).imageUrl)}
+                        onMouseLeave={handleMouseLeave}
+                        onMouseMove={handleMouseMove}
                       />
                     ) : (
-                      <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
-                        <Truck className="h-4.5 w-4.5 text-muted-foreground" />
+                      <div className="w-16 h-16 rounded bg-muted flex items-center justify-center border border-border shrink-0">
+                        <Truck className="h-8 w-8 text-muted-foreground" />
                       </div>
                     )}
                     <div>
@@ -824,8 +955,28 @@ export function DriverDashboardClient({
                       <span className="text-muted-foreground block">{b.pickup} ➔ {b.destination}</span>
                     </div>
                   </div>
-                  <div className="text-[10px] text-muted-foreground font-mono">
-                    {mounted ? `📅 ${new Date(b.startTime).toLocaleDateString()} · ${new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}
+                  <div className="text-[10px] text-muted-foreground font-mono flex justify-between items-center mt-2 pt-2 border-t border-border/30">
+                    <span>{mounted ? `📅 ${new Date(b.startTime).toLocaleDateString()} · ${new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[10px] border-red-500/30 text-red-500 hover:bg-red-500/10 cursor-pointer"
+                      onClick={async () => {
+                        if (confirm("Are you sure you want to cancel this booking?")) {
+                          startTransition(async () => {
+                            const res = await cancelUserBookingAction(b.id);
+                            if (res.error) {
+                              alert(res.error);
+                            } else {
+                              router.refresh();
+                            }
+                          });
+                        }
+                      }}
+                      disabled={isPending}
+                    >
+                      Cancel Booking
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -865,6 +1016,39 @@ export function DriverDashboardClient({
           </div>
         </div>
       </Dialog>
+      )}
+
+      {hoveredImage && (
+        <div 
+          className="fixed z-50 pointer-events-none p-1.5 bg-card border border-border rounded-xl shadow-2xl transition-opacity duration-200 hidden lg:block"
+          style={{
+            left: `${mousePos.x + 15}px`,
+            top: `${mousePos.y + 15}px`,
+            transform: 'translate3d(0, 0, 0)',
+          }}
+        >
+          <img 
+            src={hoveredImage} 
+            alt="Preview" 
+            className="w-48 h-48 object-cover rounded-lg" 
+          />
+        </div>
+      )}
+
+      {activePreviewImage && (
+        <Dialog 
+          isOpen={!!activePreviewImage} 
+          onClose={() => setActivePreviewImage(null)} 
+          title="Vehicle Image Preview"
+        >
+          <div className="flex items-center justify-center p-2">
+            <img 
+              src={activePreviewImage} 
+              alt="Vehicle Full Preview" 
+              className="max-w-full max-h-[70vh] object-contain rounded-lg border border-border" 
+            />
+          </div>
+        </Dialog>
       )}
     </div>
   );
