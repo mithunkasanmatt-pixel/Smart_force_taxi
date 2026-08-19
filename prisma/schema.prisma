@@ -86,6 +86,7 @@ model Vehicle {
   carType            String?
   ownershipType      String?        // Own / Rental
   notes              String?
+  imageUrl           String?
   
   // Relations
   trips              Trip[]

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { createVehicle, updateVehicle, deleteVehicle } from "@/actions/vehicles";
-import { Search, Plus, Edit2, Trash2, Eye, Calendar, Milestone } from "lucide-react";
+import { Search, Plus, Edit2, Trash2, Eye, Calendar, Milestone, UploadCloud, X, Truck } from "lucide-react";
 import { useTranslation } from "@/components/layout/language-provider";
 
 interface VehicleManagerProps {
@@ -39,6 +39,11 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
   const [isPending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
 
+  // File Upload State
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [base64Image, setBase64Image] = useState<string | null>(null);
+
   // Form State
   const [formData, setFormData] = useState({
     vehicleNumber: "",
@@ -57,7 +62,38 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
     carType: "Sedan",
     ownershipType: "Own",
     notes: "",
+    imageUrl: "",
   });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      if (!selectedFile.type.startsWith("image/")) {
+        setFormError("Please select an image file (PNG, JPG, JPEG)");
+        return;
+      }
+      if (selectedFile.size > 5 * 1024 * 1024) {
+        setFormError("Image size must be less than 5MB");
+        return;
+      }
+      setFile(selectedFile);
+      setPreviewUrl(URL.createObjectURL(selectedFile));
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBase64Image(reader.result as string);
+      };
+      reader.readAsDataURL(selectedFile);
+      setFormError(null);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setFile(null);
+    setPreviewUrl(null);
+    setBase64Image(null);
+    setFormData((prev) => ({ ...prev, imageUrl: "" }));
+  };
 
   const handleOpenAdd = () => {
     setVehicleToEdit(null);
@@ -78,7 +114,11 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
       carType: "Sedan",
       ownershipType: "Own",
       notes: "",
+      imageUrl: "",
     });
+    setFile(null);
+    setPreviewUrl(null);
+    setBase64Image(null);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -102,7 +142,11 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
       carType: vehicle.carType || "Sedan",
       ownershipType: vehicle.ownershipType || "Own",
       notes: vehicle.notes || "",
+      imageUrl: (vehicle as any).imageUrl || "",
     });
+    setFile(null);
+    setPreviewUrl(null);
+    setBase64Image(null);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -129,6 +173,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
           year: Number(formData.year),
           seatingCapacity: Number(formData.seatingCapacity),
           odometer: Number(formData.odometer),
+          base64Image: base64Image || undefined,
         });
       } else {
         res = await createVehicle({
@@ -136,12 +181,16 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
           year: Number(formData.year),
           seatingCapacity: Number(formData.seatingCapacity),
           odometer: Number(formData.odometer),
+          base64Image: base64Image || undefined,
         });
       }
 
       if (res.error) {
         setFormError(res.error);
       } else {
+        setFile(null);
+        setPreviewUrl(null);
+        setBase64Image(null);
         setIsFormOpen(false);
       }
     });
@@ -254,9 +303,24 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
           {filteredVehicles.map((vehicle) => (
             <TableRow key={vehicle.id}>
               <TableCell>
-                <div className="font-semibold text-foreground">{vehicle.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {vehicle.brand} {vehicle.model} ({vehicle.year})
+                <div className="flex items-center gap-3">
+                  {(vehicle as any).imageUrl ? (
+                    <img 
+                      src={(vehicle as any).imageUrl} 
+                      alt={vehicle.name} 
+                      className="w-10 h-10 rounded-lg object-cover border border-border shrink-0" 
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center border border-border shrink-0">
+                      <Truck className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="font-semibold text-foreground">{vehicle.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {vehicle.brand} {vehicle.model} ({vehicle.year})
+                    </div>
+                  </div>
                 </div>
               </TableCell>
               <TableCell>
@@ -458,6 +522,57 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
           </div>
 
           <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Vehicle Image</label>
+            <div className="flex items-center gap-4">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+                id="vehicle-image-upload"
+              />
+              <label
+                htmlFor="vehicle-image-upload"
+                className="flex items-center justify-center px-4 py-2 border border-dashed border-border rounded-lg text-xs font-semibold cursor-pointer hover:border-primary/40 hover:bg-muted/10 transition-colors gap-2 text-foreground"
+              >
+                <UploadCloud className="h-4 w-4 text-muted-foreground" />
+                <span>Choose Image</span>
+              </label>
+              {previewUrl ? (
+                <div className="relative">
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
+                    className="w-16 h-16 object-cover rounded-lg border border-border"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 shadow-sm border border-white flex items-center justify-center"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : formData.imageUrl ? (
+                <div className="relative">
+                  <img
+                    src={formData.imageUrl}
+                    alt="Current"
+                    className="w-16 h-16 object-cover rounded-lg border border-border"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 shadow-sm border border-white flex items-center justify-center"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Vehicle Status</label>
             <select
               className="flex h-10 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/50"
@@ -498,9 +613,22 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
         {selectedVehicle && (
           <div className="space-y-6">
             <div className="flex justify-between items-start border-b border-border pb-4">
-              <div>
-                <h3 className="text-xl font-bold">{selectedVehicle.name}</h3>
-                <p className="text-sm text-muted-foreground">{selectedVehicle.brand} {selectedVehicle.model} ({selectedVehicle.year})</p>
+              <div className="flex items-center gap-3">
+                {(selectedVehicle as any).imageUrl ? (
+                  <img 
+                    src={(selectedVehicle as any).imageUrl} 
+                    alt={selectedVehicle.name} 
+                    className="w-12 h-12 rounded-lg object-cover border border-border shrink-0" 
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center border border-border shrink-0">
+                    <Truck className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-xl font-bold">{selectedVehicle.name}</h3>
+                  <p className="text-sm text-muted-foreground">{selectedVehicle.brand} {selectedVehicle.model} ({selectedVehicle.year})</p>
+                </div>
               </div>
               {getStatusLabel(selectedVehicle.status)}
             </div>
@@ -568,9 +696,22 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
       <Dialog isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)} title="De-register Vehicle">
         {selectedVehicle && (
           <div className="space-y-4">
-            <p className="text-sm text-foreground">
-              Are you sure you want to de-register vehicle <span className="font-bold text-primary">{selectedVehicle.vehicleNumber}</span> ({selectedVehicle.name})?
-            </p>
+            <div className="flex items-center gap-3">
+              {(selectedVehicle as any).imageUrl ? (
+                <img 
+                  src={(selectedVehicle as any).imageUrl} 
+                  alt={selectedVehicle.name} 
+                  className="w-12 h-12 rounded-lg object-cover border border-border shrink-0" 
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center border border-border shrink-0">
+                  <Truck className="h-6 w-6 text-muted-foreground" />
+                </div>
+              )}
+              <p className="text-sm text-foreground">
+                Are you sure you want to de-register vehicle <span className="font-bold text-primary">{selectedVehicle.vehicleNumber}</span> ({selectedVehicle.name})?
+              </p>
+            </div>
             <p className="text-xs text-red-500 font-semibold bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
               Warning: This action will permanently remove the vehicle record and all associated trip histories.
             </p>

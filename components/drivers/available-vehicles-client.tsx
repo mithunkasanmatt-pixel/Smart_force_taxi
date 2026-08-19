@@ -65,11 +65,24 @@ export function AvailableVehiclesClient({
             <div>
               <CardHeader className="pb-3">
                 <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-lg font-bold text-foreground">{vehicle.name}</CardTitle>
-                    <CardDescription className="text-xs text-muted-foreground">
-                      {vehicle.brand} {vehicle.model} ({vehicle.year})
-                    </CardDescription>
+                  <div className="flex items-center gap-2">
+                    {(vehicle as any).imageUrl ? (
+                      <img 
+                        src={(vehicle as any).imageUrl} 
+                        alt={vehicle.name} 
+                        className="w-10 h-10 rounded-lg object-cover border border-border shrink-0" 
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center border border-border shrink-0">
+                        <Truck className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div>
+                      <CardTitle className="text-lg font-bold text-foreground">{vehicle.name}</CardTitle>
+                      <CardDescription className="text-xs text-muted-foreground">
+                        {vehicle.brand} {vehicle.model} ({vehicle.year})
+                      </CardDescription>
+                    </div>
                   </div>
                   <Badge variant="success" className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                     {vehicle.status}

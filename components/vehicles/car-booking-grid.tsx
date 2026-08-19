@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useTransition } from "react";
 import { Vehicle, User, Trip } from "@prisma/client";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { bookCarAction } from "@/actions/driver-trips";
-import { Calendar, Clock, User as UserIcon, MapPin, Check, AlertCircle, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar, Clock, User as UserIcon, MapPin, Check, AlertCircle, FileText, ChevronLeft, ChevronRight, Truck } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { Card } from "@/components/ui/card";
 import { useTranslation } from "@/components/layout/language-provider";
@@ -326,10 +326,23 @@ export function CarBookingGrid({
     <div className="space-y-6 text-foreground">
       {/* Vehicle Info Summary Banner */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-muted/30 border border-border/40 rounded-xl">
-        <div>
-          <span className="block text-[10px] uppercase font-bold text-muted-foreground tracking-widest">{t("selected_vehicle")}</span>
-          <h4 className="text-lg font-bold text-foreground">{vehicle.name}</h4>
-          <span className="font-mono text-xs font-bold text-primary block mt-0.5">{vehicle.vehicleNumber} ┬╖ {vehicle.carType || "Sedan"}</span>
+        <div className="flex items-center gap-3">
+          {(vehicle as any).imageUrl ? (
+            <img 
+              src={(vehicle as any).imageUrl} 
+              alt={vehicle.name} 
+              className="w-12 h-12 rounded-lg object-cover border border-border shrink-0" 
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center border border-border shrink-0">
+              <Truck className="h-6 w-6 text-muted-foreground" />
+            </div>
+          )}
+          <div>
+            <span className="block text-[10px] uppercase font-bold text-muted-foreground tracking-widest">{t("selected_vehicle")}</span>
+            <h4 className="text-lg font-bold text-foreground">{vehicle.name}</h4>
+            <span className="font-mono text-xs font-bold text-primary block mt-0.5">{vehicle.vehicleNumber} ┬╖ {vehicle.carType || "Sedan"}</span>
+          </div>
         </div>
         <div className="text-right text-xs">
           <span className="text-muted-foreground">{t("odometer")}: </span>
