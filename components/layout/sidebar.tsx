@@ -44,6 +44,7 @@ export function Sidebar({ role }: SidebarProps) {
     { href: "/admin/vehicles", label: t("vehicles"), icon: Truck },
     { href: "/admin/drivers", label: t("drivers"), icon: Users },
     { href: "/admin/bookings", label: "Booking History", icon: Calendar },
+    { href: "/admin/schedule", label: t("vehicle_schedule"), icon: Calendar },
     { href: "/admin/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
   ];
 

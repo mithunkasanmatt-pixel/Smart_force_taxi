@@ -60,12 +60,14 @@ model User {
   // Relations
   trips             Trip[]         @relation("DriverTrips")
   weeklyLogs        WeeklyLog[]
-  assignedVehicle   Vehicle[]      @relation("DriverVehicle")
+  assignedVehicleId String?
+  assignedVehicle   Vehicle?       @relation("DriverVehicle", fields: [assignedVehicleId], references: [id], onDelete: SetNull)
   
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
   @@index([role])
+  @@index([assignedVehicleId])
 }
 
 model Vehicle {
@@ -90,8 +92,7 @@ model Vehicle {
   
   // Relations
   trips              Trip[]
-  assignedDriverId   String?
-  assignedDriver     User?          @relation("DriverVehicle", fields: [assignedDriverId], references: [id], onDelete: SetNull)
+  assignedDrivers    User[]         @relation("DriverVehicle")
 
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt

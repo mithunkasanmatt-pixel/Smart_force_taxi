@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { VehicleStatus } from "@prisma/client";
 import { v2 as cloudinary } from "cloudinary";
-import { sendVehicleReassignmentEmail } from "@/lib/notifications";
+import { sendVehicleReassignmentEmail, sendVehicleAssignmentEmail } from "@/lib/notifications";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -157,46 +157,145 @@ export async function deleteVehicle(id: string) {
   }
 }
 
-export async function assignVehicleToDriver(vehicleId: string, driverId: string | null) {
+export async function assignVehicleToDriver(
+  vehicleId: string | null,
+  driverId: string,
+  replaceDriverId?: string | null
+) {
   try {
-    // 1. Fetch current vehicle and its assigned driver (if any)
+    // 1. If vehicleId is null, it means we want to unallocate the driver from their current vehicle
+    if (!vehicleId) {
+      const driver = await db.user.findUnique({
+        where: { id: driverId },
+        include: { assignedVehicle: true },
+      });
+
+      if (!driver) {
+        return { error: "Driver not found" };
+      }
+
+      if (driver.assignedVehicle) {
+        const prevVehicle = driver.assignedVehicle;
+        // Unallocate
+        await db.user.update({
+          where: { id: driverId },
+          data: { assignedVehicleId: null },
+        });
+
+        // Send email notification to driver whose allocation was cancelled
+        try {
+          await sendVehicleReassignmentEmail(
+            driver.email,
+            driver.name,
+            prevVehicle.name,
+            prevVehicle.vehicleNumber
+          );
+        } catch (emailError) {
+          console.error("Error sending vehicle cancellation email:", emailError);
+        }
+      }
+
+      revalidatePath("/admin/drivers");
+      revalidatePath("/driver");
+      revalidatePath("/admin");
+      return { success: true };
+    }
+
+    // 2. If vehicleId is not null, we want to allocate the vehicle to the driver
     const vehicle = await db.vehicle.findUnique({
       where: { id: vehicleId },
-      include: { assignedDriver: true },
+      include: { assignedDrivers: true },
     });
 
     if (!vehicle) {
       return { error: "Vehicle not found" };
     }
 
-    const previousDriver = vehicle.assignedDriver;
+    const currentDrivers = vehicle.assignedDrivers || [];
 
-    if (driverId) {
-      // Clear any other vehicle assigned to the new driver
-      await db.vehicle.updateMany({
-        where: { assignedDriverId: driverId },
-        data: { assignedDriverId: null },
-      });
+    // Check if the target driver is already assigned to this vehicle
+    const isAlreadyAssignedToThis = currentDrivers.some((d) => d.id === driverId);
+    if (isAlreadyAssignedToThis) {
+      return { success: true }; // Already assigned, nothing to do
     }
 
-    // 2. Assign the selected vehicle to the new driver
-    await db.vehicle.update({
-      where: { id: vehicleId },
-      data: { assignedDriverId: driverId },
+    // Find the new driver who is being assigned
+    const newDriver = await db.user.findUnique({
+      where: { id: driverId },
+      include: { assignedVehicle: true },
     });
 
-    // 3. If there was a previous driver, and they are not the new driver, send them an email
-    if (previousDriver && previousDriver.id !== driverId) {
+    if (!newDriver) {
+      return { error: "Driver not found" };
+    }
+
+    // If new driver already has an allocated vehicle, unallocate them from it first
+    if (newDriver.assignedVehicle) {
+      const prevVehicle = newDriver.assignedVehicle;
+      await db.user.update({
+        where: { id: driverId },
+        data: { assignedVehicleId: null },
+      });
       try {
         await sendVehicleReassignmentEmail(
-          previousDriver.email,
-          previousDriver.name,
+          newDriver.email,
+          newDriver.name,
+          prevVehicle.name,
+          prevVehicle.vehicleNumber
+        );
+      } catch (emailError) {
+        console.error("Error sending previous vehicle cancellation email:", emailError);
+      }
+    }
+
+    // Now check if vehicle already has 2 assigned drivers
+    if (currentDrivers.length >= 2) {
+      // We must have replaceDriverId specified
+      if (!replaceDriverId) {
+        return { error: "Vehicle is already permanently allocated to two drivers. Please choose one to replace." };
+      }
+
+      // Find the driver to replace
+      const driverToReplace = currentDrivers.find((d) => d.id === replaceDriverId);
+      if (!driverToReplace) {
+        return { error: "Driver to replace is not currently assigned to this vehicle." };
+      }
+
+      // Unassign the replaced driver
+      await db.user.update({
+        where: { id: replaceDriverId },
+        data: { assignedVehicleId: null },
+      });
+
+      // Send email to the replaced driver
+      try {
+        await sendVehicleReassignmentEmail(
+          driverToReplace.email,
+          driverToReplace.name,
           vehicle.name,
           vehicle.vehicleNumber
         );
       } catch (emailError) {
-        console.error("Error sending vehicle reassignment email:", emailError);
+        console.error("Error sending vehicle reassignment email to replaced driver:", emailError);
       }
+    }
+
+    // Finally, assign the vehicle to the new driver
+    await db.user.update({
+      where: { id: driverId },
+      data: { assignedVehicleId: vehicleId },
+    });
+
+    // Send email to the newly assigned driver
+    try {
+      await sendVehicleAssignmentEmail(
+        newDriver.email,
+        newDriver.name,
+        vehicle.name,
+        vehicle.vehicleNumber
+      );
+    } catch (emailError) {
+      console.error("Error sending vehicle assignment email to new driver:", emailError);
     }
 
     revalidatePath("/admin/drivers");

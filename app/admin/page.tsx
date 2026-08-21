@@ -25,27 +25,52 @@ export default async function AdminDashboard() {
 
   const now = new Date();
 
-  // 1. Fetch all vehicles and their active/future bookings (Trips)
-  const vehicles = await db.vehicle.findMany({
-    include: {
-      trips: {
-        where: {
-          status: {
-            notIn: ["CANCELLED", "COMPLETED"],
+  // Fetch vehicles (with trips) and drivers (with trips) in parallel for optimized speed
+  const [vehicles, drivers] = await Promise.all([
+    db.vehicle.findMany({
+      include: {
+        trips: {
+          where: {
+            status: {
+              notIn: ["CANCELLED", "COMPLETED"],
+            },
+          },
+          include: {
+            driver: true,
+          },
+          orderBy: {
+            startTime: "asc",
           },
         },
-        include: {
-          driver: true,
-        },
-        orderBy: {
-          startTime: "asc",
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+    db.user.findMany({
+      where: {
+        role: "DRIVER",
+      },
+      include: {
+        trips: {
+          where: {
+            status: {
+              notIn: ["CANCELLED", "COMPLETED"],
+            },
+          },
+          include: {
+            vehicle: true,
+          },
+          orderBy: {
+            startTime: "asc",
+          },
         },
       },
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
+      orderBy: {
+        name: "asc",
+      },
+    }),
+  ]);
 
   // Calculate vehicle availability dynamically: status is AVAILABLE and no active booking slot at present
   const availableCars = vehicles.filter(vehicle => {
@@ -68,31 +93,6 @@ export default async function AdminDashboard() {
       bookings: activeOrFutureBookings,
     };
   }).filter(v => v.bookings.length > 0);
-
-  // 2. Fetch all drivers and their active/future trips
-  const drivers = await db.user.findMany({
-    where: {
-      role: "DRIVER",
-    },
-    include: {
-      trips: {
-        where: {
-          status: {
-            notIn: ["CANCELLED", "COMPLETED"],
-          },
-        },
-        include: {
-          vehicle: true,
-        },
-        orderBy: {
-          startTime: "asc",
-        },
-      },
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
 
   // Working drivers: drivers with an active booking right now
   const workingDrivers = drivers.filter(driver => {
@@ -231,6 +231,17 @@ export default async function AdminDashboard() {
                           )}
                           <div>
                             {car.name} <span className="text-xs text-muted-foreground block">{car.brand} {car.model} ({car.year})</span>
+                            <div className="mt-1">
+                              {car.trips.length >= 3 ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/25">
+                                  🟢 High Usage ({car.trips.length} bookings)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-red-600 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/25">
+                                  🔴 Low Usage ({car.trips.length} bookings)
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
@@ -280,6 +291,17 @@ export default async function AdminDashboard() {
                         <div>
                           <span className="font-bold text-sm text-foreground block">{car.name}</span>
                           <span className="text-xs text-muted-foreground block">{car.brand} {car.model}</span>
+                          <div className="mt-1 flex gap-1">
+                            {car.trips.length >= 3 ? (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/25">
+                                🟢 High Usage ({car.trips.length} bookings)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-red-600 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/25">
+                                🔴 Low Usage ({car.trips.length} bookings)
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <Badge variant="outline" className="font-mono text-[10px] text-primary border-primary/20 bg-primary/5">{car.vehicleNumber}</Badge>
