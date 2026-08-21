@@ -55,6 +55,7 @@ export function DriverDashboardClient({
     pickup: "",
     destination: "",
     purpose: "Corporate Duty",
+    notes: "",
   });
   const [clickedBookedSlot, setClickedBookedSlot] = useState<any | null>(null);
   const [showSundayPopup, setShowSundayPopup] = useState(false);
@@ -361,6 +362,12 @@ export function DriverDashboardClient({
           endTime: "",
         });
       } else {
+        // Check for 12-hour limit
+        const limit12Hours = 12 * 60 * 60 * 1000;
+        if (clickedVal - startVal > limit12Hours) {
+          setBookingError("Booking duration cannot exceed 12 hours.");
+          return;
+        }
         // Check for any booked slots in between
         const startValDate = new Date(bookingTimes.startTime);
         const endValDate = new Date(slot.startStr);
@@ -427,6 +434,16 @@ export function DriverDashboardClient({
       return;
     }
 
+    if (end.getTime() - start.getTime() > 12 * 60 * 60 * 1000) {
+      setBookingError("Booking duration cannot exceed 12 hours.");
+      return;
+    }
+
+    if (!bookingTimes.pickup || !bookingTimes.destination || !bookingTimes.purpose) {
+      setBookingError("Pickup location, drop location, and purpose are required.");
+      return;
+    }
+
     // Allow start time to be up to 2 hours in the past to accommodate selecting the current slot
     const graceTime = new Date(Date.now() - 2 * 60 * 60 * 1000);
     if (start < graceTime) {
@@ -440,9 +457,10 @@ export function DriverDashboardClient({
         driverId: driver.id,
         startTime: start.toISOString(),
         endTime: end.toISOString(),
-        pickup: bookingTimes.pickup || "Operations Center",
-        destination: bookingTimes.destination || "Destination Site",
+        pickup: bookingTimes.pickup,
+        destination: bookingTimes.destination,
         purpose: bookingTimes.purpose,
+        notes: bookingTimes.notes || undefined,
         assignedBy: "DRIVER",
         requestedBy: driver.name,
       });
@@ -457,6 +475,7 @@ export function DriverDashboardClient({
           pickup: "",
           destination: "",
           purpose: "Corporate Duty",
+          notes: "",
         });
         router.refresh();
       }
@@ -649,6 +668,7 @@ export function DriverDashboardClient({
                     pickup: "",
                     destination: "",
                     purpose: "Corporate Duty",
+                    notes: "",
                   });
                   setClickedBookedSlot(null);
                 }}
@@ -883,27 +903,61 @@ export function DriverDashboardClient({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                  <div className="space-y-1 md:col-span-2">
-                    <label className="text-xs font-semibold text-muted-foreground">Purpose of Booking</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Pickup Location</label>
                     <Input
                       type="text"
-                      placeholder="e.g. Airport Pickup"
-                      value={bookingTimes.purpose}
-                      onChange={(e) => setBookingTimes({ ...bookingTimes, purpose: e.target.value })}
+                      placeholder="e.g. Operations Center"
+                      value={bookingTimes.pickup}
+                      onChange={(e) => setBookingTimes({ ...bookingTimes, pickup: e.target.value })}
                       className="focus-visible:ring-primary text-xs h-10"
                       required
                     />
                   </div>
                   <div className="space-y-1">
-                    <Button 
-                      type="submit" 
-                      className="w-full bg-primary text-white font-bold h-10 shadow-sm hover:glow-primary"
-                      disabled={isPending}
-                    >
-                      {isPending ? "Confirming..." : "Confirm Booking"}
-                    </Button>
+                    <label className="text-xs font-semibold text-muted-foreground">Drop Location</label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. Destination Site"
+                      value={bookingTimes.destination}
+                      onChange={(e) => setBookingTimes({ ...bookingTimes, destination: e.target.value })}
+                      className="focus-visible:ring-primary text-xs h-10"
+                      required
+                    />
                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Purpose of Booking</label>
+                  <Input
+                    type="text"
+                    placeholder="e.g. Airport Pickup"
+                    value={bookingTimes.purpose}
+                    onChange={(e) => setBookingTimes({ ...bookingTimes, purpose: e.target.value })}
+                    className="focus-visible:ring-primary text-xs h-10"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Notes (Optional)</label>
+                  <textarea
+                    className="flex min-h-[50px] w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-primary text-xs"
+                    placeholder="Add notes for the trip..."
+                    value={bookingTimes.notes}
+                    onChange={(e) => setBookingTimes({ ...bookingTimes, notes: e.target.value })}
+                  />
+                </div>
+
+                <div className="flex justify-end pt-2 border-t border-border/30">
+                  <Button 
+                    type="submit" 
+                    className="bg-primary text-white font-bold h-10 shadow-sm hover:glow-primary px-6 text-xs"
+                    disabled={isPending}
+                  >
+                    {isPending ? "Confirming..." : "Confirm Booking"}
+                  </Button>
                 </div>
               </form>
             </>
