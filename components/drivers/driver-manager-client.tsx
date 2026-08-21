@@ -199,6 +199,13 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
           endTime: "",
         });
       } else {
+        // Check for 12-hour limit
+        const limit12Hours = 12 * 60 * 60 * 1000;
+        if (clickedVal - startVal > limit12Hours) {
+          setFormError("Booking duration cannot exceed 12 hours.");
+          return;
+        }
+
         // Check for any booked slots in between
         const startValDate = new Date(bookingForm.startTime);
         const endValDate = new Date(slot.startStr);
@@ -275,6 +282,11 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
 
     if (start >= end) {
       setFormError("End time must be after start time.");
+      return;
+    }
+
+    if (end.getTime() - start.getTime() > 12 * 60 * 60 * 1000) {
+      setFormError("Booking duration cannot exceed 12 hours.");
       return;
     }
 
@@ -855,7 +867,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Destination Location</label>
+                      <label className="text-xs font-semibold text-muted-foreground">Drop Location</label>
                       <Input
                         placeholder="Hotel / Corporate Office"
                         value={bookingForm.destination}
