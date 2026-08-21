@@ -599,6 +599,7 @@ export function DriverDashboardClient({
                         src={(car as any).imageUrl} 
                         alt={car.name} 
                         className="w-12 h-12 rounded-full object-cover border border-border shrink-0 cursor-zoom-in" 
+                        loading="lazy"
                         onClick={(e) => {
                           e.stopPropagation();
                           setActivePreviewImage((car as any).imageUrl);
@@ -642,6 +643,7 @@ export function DriverDashboardClient({
                       src={(selectedVehicle as any).imageUrl} 
                       alt={selectedVehicle.name} 
                       className="w-16 h-16 rounded object-cover border border-border shrink-0 ml-1 cursor-zoom-in" 
+                      loading="lazy"
                       onClick={(e) => {
                         e.stopPropagation();
                         setActivePreviewImage((selectedVehicle as any).imageUrl);
@@ -991,6 +993,7 @@ export function DriverDashboardClient({
                         src={(b.vehicle as any).imageUrl} 
                         alt={b.vehicle?.name} 
                         className="w-16 h-16 rounded object-cover border border-border shrink-0 cursor-zoom-in" 
+                        loading="lazy"
                         onClick={(e) => {
                           e.stopPropagation();
                           setActivePreviewImage((b.vehicle as any).imageUrl);

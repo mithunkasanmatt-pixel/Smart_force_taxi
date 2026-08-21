@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import { Trip, User, Vehicle } from "@prisma/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,10 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Delete modal flow states
   const [bookingToDelete, setBookingToDelete] = useState<(Trip & { driver?: User | null }) | null>(null);
@@ -117,12 +121,16 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
                         <span className="text-muted-foreground italic">No Vehicle</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-xs font-medium">
-                      {new Date(b.startTime).toLocaleDateString([], { dateStyle: "medium" })}
+                    <TableCell className="text-xs font-medium" suppressHydrationWarning>
+                      {mounted ? new Date(b.startTime).toLocaleDateString([], { dateStyle: "medium" }) : ""}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground font-medium">
-                      {new Date(b.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} -{" "}
-                      {new Date(b.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    <TableCell className="text-xs text-muted-foreground font-medium" suppressHydrationWarning>
+                      {mounted ? (
+                        <>
+                          {new Date(b.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} -{" "}
+                          {new Date(b.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </>
+                      ) : ""}
                     </TableCell>
                     <TableCell className="text-xs font-semibold">{formatDuration(b.startTime, b.endTime)}</TableCell>
                     <TableCell className="text-xs">

@@ -13,39 +13,37 @@ export default async function DriversPage() {
     redirect("/login");
   }
 
-  // Fetch all DRIVER users
-  const drivers = await db.user.findMany({
-    where: {
-      role: "DRIVER",
-    },
-    include: {
-      assignedVehicle: true,
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
-
-  // Fetch all trips (bookings)
-  const bookings = await db.trip.findMany({
-    include: {
-      driver: true,
-      vehicle: true,
-    },
-    orderBy: {
-      startTime: "desc",
-    },
-  });
-
-  // Fetch all active vehicles for the booking dropdown
-  const vehicles = await db.vehicle.findMany({
-    include: {
-      assignedDriver: true,
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
+  // Fetch all DRIVER users, bookings, and active vehicles in parallel for optimized performance
+  const [drivers, bookings, vehicles] = await Promise.all([
+    db.user.findMany({
+      where: {
+        role: "DRIVER",
+      },
+      include: {
+        assignedVehicle: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+    db.trip.findMany({
+      include: {
+        driver: true,
+        vehicle: true,
+      },
+      orderBy: {
+        startTime: "desc",
+      },
+    }),
+    db.vehicle.findMany({
+      include: {
+        assignedDrivers: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+  ]);
 
   return (
     <DriverManagerClient

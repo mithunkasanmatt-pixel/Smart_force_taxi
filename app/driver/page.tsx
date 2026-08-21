@@ -21,72 +21,65 @@ export default async function DriverDashboard() {
     redirect("/login?error=SessionExpired");
   }
 
-  // Find all vehicles
-  const vehicles = await db.vehicle.findMany({
-    orderBy: {
-      name: "asc",
-    },
-  });
-
-  // Find all bookings (trips) that are not completed/cancelled
-  const bookings = await db.trip.findMany({
-    where: {
-      status: {
-        notIn: ["CANCELLED", "COMPLETED"],
-      },
-    },
-    include: {
-      driver: true,
-      vehicle: true,
-    },
-  });
-
-  // Find active work trip (ASSIGNED, ACCEPTED, or IN_PROGRESS)
-  const activeTrip = await db.trip.findFirst({
-    where: {
-      driverId: driver.id,
-      status: {
-        in: ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"],
-      },
-    },
-    include: {
-      vehicle: true,
-    },
-  });
-
-  // Find vehicle permanently assigned to this driver
-  const assignedVehicle = await db.vehicle.findFirst({
-    where: {
-      assignedDriverId: driver.id,
-    },
-  });
-
-  // Find all weekly logs
-  const logs = await db.weeklyLog.findMany({
-    where: { driverId: driver.id },
-    orderBy: { uploadedAt: "desc" },
-  });
-
-  // Find all bookings of this driver for today (including completed ones, excluding cancelled ones)
+  // Calculate today's time range for filtering bookings
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart);
   todayEnd.setDate(todayStart.getDate() + 1);
 
-  const todayBookings = await db.trip.findMany({
-    where: {
-      driverId: driver.id,
-      status: {
-        notIn: ["CANCELLED"],
+  // Fetch all required data in parallel for optimized portal performance
+  const [vehicles, bookings, activeTrip, assignedVehicle, logs, todayBookings] = await Promise.all([
+    db.vehicle.findMany({
+      orderBy: {
+        name: "asc",
       },
-      startTime: {
-        lt: todayEnd,
+    }),
+    db.trip.findMany({
+      where: {
+        status: {
+          notIn: ["CANCELLED", "COMPLETED"],
+        },
       },
-      endTime: {
-        gt: todayStart,
+      include: {
+        driver: true,
+        vehicle: true,
       },
-    },
-  });
+    }),
+    db.trip.findFirst({
+      where: {
+        driverId: driver.id,
+        status: {
+          in: ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"],
+        },
+      },
+      include: {
+        vehicle: true,
+      },
+    }),
+    driver.assignedVehicleId
+      ? db.vehicle.findUnique({
+          where: { id: driver.assignedVehicleId },
+        })
+      : Promise.resolve(null),
+    db.weeklyLog.findMany({
+      where: { driverId: driver.id },
+      orderBy: { uploadedAt: "desc" },
+    }),
+    db.trip.findMany({
+      where: {
+        driverId: driver.id,
+        status: {
+          notIn: ["CANCELLED"],
+        },
+        startTime: {
+          lt: todayEnd,
+        },
+        endTime: {
+          gt: todayStart,
+        },
+      },
+    }),
+  ]);
 
   return (
     <DriverPortalClient

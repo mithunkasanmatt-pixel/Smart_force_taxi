@@ -397,3 +397,246 @@ Smart Force Taxi Operations Team`;
     return { error };
   }
 }
+
+/**
+ * Sends a vehicle assignment confirmation email to the newly assigned driver
+ */
+export async function sendVehicleAssignmentEmail(
+  email: string,
+  name: string,
+  vehicleName: string,
+  vehicleNumber: string
+) {
+  const from = process.env.SMTP_FROM || `"Smart Force Taxi" <noreply@smartforcetaxi.com>`;
+  const subject = `Vehicle Allocated: ${vehicleName}`;
+  const text = `Hello ${name},
+
+We are pleased to inform you that the vehicle ${vehicleName} (Plate Number: ${vehicleNumber}) has been permanently allocated to you.
+
+You can now use this vehicle for your shifts and bookings.
+
+Best regards,
+Smart Force Taxi Operations Team`;
+
+  const html = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; border-radius: 8px;">
+    <h2 style="color: #10b981; margin-top: 0;">Vehicle Allocation Notice</h2>
+    <p>Hello <strong>${name}</strong>,</p>
+    <p>We are pleased to inform you that the vehicle has been permanently allocated to you:</p>
+    <div style="background-color: #f0fdf4; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #dcfce7;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #14532d; width: 120px;">Vehicle:</td>
+          <td style="padding: 6px 0;">${vehicleName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #14532d;">Plate Number:</td>
+          <td style="padding: 6px 0; font-family: monospace;">${vehicleNumber}</td>
+        </tr>
+      </table>
+    </div>
+    <p>This vehicle is now permanently assigned to you and is ready for your shifts.</p>
+    <p style="font-size: 12px; color: #a1a1aa; margin-top: 30px; border-top: 1px solid #e4e4e7; padding-top: 15px;">
+      This is an automated operational message. Please do not reply directly to this email.
+    </p>
+  </div>`;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to: email,
+      subject,
+      text,
+      html,
+    });
+    console.log(`Vehicle assignment email sent successfully to: ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to send vehicle assignment email:", error);
+    return { error };
+  }
+}
+
+/**
+ * Sends a daily email to all drivers showing the available vehicles and slots for tomorrow
+ */
+export async function sendDailyAvailableVehiclesEmail() {
+  const { db } = await import("@/lib/db");
+  
+  // Calculate tomorrow's range in local time
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  
+  const dayStart = new Date(tomorrow);
+  dayStart.setHours(0, 0, 0, 0);
+  
+  const dayEnd = new Date(tomorrow);
+  dayEnd.setHours(23, 59, 59, 999);
+
+  // 1. Fetch all active vehicles (status is not MAINTENANCE and not OFFLINE)
+  const vehicles = await db.vehicle.findMany({
+    where: {
+      status: {
+        notIn: ["MAINTENANCE", "OFFLINE"],
+      },
+    },
+  });
+
+  const availableList: { vehicleName: string; slots: string[] }[] = [];
+
+  for (const vehicle of vehicles) {
+    // Fetch bookings for tomorrow
+    const trips = await db.trip.findMany({
+      where: {
+        vehicleId: vehicle.id,
+        status: {
+          not: "CANCELLED",
+        },
+        startTime: {
+          lt: dayEnd,
+        },
+        endTime: {
+          gt: dayStart,
+        },
+      },
+      orderBy: {
+        startTime: "asc",
+      },
+    });
+
+    // Clamp bookings to tomorrow's boundaries
+    const bookings = trips.map((t) => {
+      const bStart = new Date(t.startTime);
+      const bEnd = new Date(t.endTime);
+      return {
+        start: bStart < dayStart ? dayStart : bStart,
+        end: bEnd > dayEnd ? dayEnd : bEnd,
+      };
+    });
+
+    // Calculate free slots
+    const freeSlots: { start: Date; end: Date }[] = [];
+    let currentMarker = dayStart;
+
+    bookings.forEach((b) => {
+      if (b.start.getTime() > currentMarker.getTime()) {
+        freeSlots.push({
+          start: new Date(currentMarker),
+          end: new Date(b.start),
+        });
+      }
+      if (b.end.getTime() > currentMarker.getTime()) {
+        currentMarker = b.end;
+      }
+    });
+
+    if (currentMarker.getTime() < dayEnd.getTime()) {
+      freeSlots.push({
+        start: new Date(currentMarker),
+        end: new Date(dayEnd),
+      });
+    }
+
+    if (freeSlots.length > 0) {
+      const formatTime12h = (date: Date) => {
+        let str = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+        // Clean up leading zero if necessary, e.g. "08:00 AM" to "8:00 AM"
+        if (str.startsWith("0")) {
+          str = str.substring(1);
+        }
+        return str;
+      };
+      
+      const slotsText = freeSlots.map(
+        (slot) => `${formatTime12h(slot.start)} – ${formatTime12h(slot.end)} Available`
+      );
+      
+      availableList.push({
+        vehicleName: `${vehicle.brand} ${vehicle.name} (${vehicle.vehicleNumber})`,
+        slots: slotsText,
+      });
+    }
+  }
+
+  // 2. Fetch all DRIVER users
+  const drivers = await db.user.findMany({
+    where: {
+      role: "DRIVER",
+    },
+  });
+
+  if (drivers.length === 0) {
+    console.log("No drivers registered to send daily available vehicles email.");
+    return { success: true, message: "No drivers registered." };
+  }
+
+  if (availableList.length === 0) {
+    console.log("No vehicles available for tomorrow to broadcast.");
+    return { success: true, message: "No vehicles available tomorrow." };
+  }
+
+  // 3. Format the email content
+  const tomorrowFormatted = dayStart.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: "numeric" });
+  const from = process.env.SMTP_FROM || `"Smart Force Taxi" <noreply@smartforcetaxi.com>`;
+  const subject = `Available Vehicles & Slots for Tomorrow: ${tomorrowFormatted}`;
+
+  // Plain text version
+  let text = `Hello,\n\nHere are the vehicles and time slots available for booking tomorrow, ${tomorrowFormatted}:\n\n`;
+  availableList.forEach((item) => {
+    text += `* ${item.vehicleName}\n`;
+    item.slots.forEach((slot) => {
+      text += `  - ${slot}\n`;
+    });
+    text += `\n`;
+  });
+  text += `Best regards,\nSmart Force Taxi Operations Team`;
+
+  // HTML version
+  let html = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; border-radius: 8px;">
+    <h2 style="color: #f59e0b; margin-top: 0;">Available Vehicles for Tomorrow</h2>
+    <p>Hello,</p>
+    <p>Here is the schedule of vehicles and time slots available for booking tomorrow, <strong>${tomorrowFormatted}</strong>:</p>
+    <div style="background-color: #fcfbf7; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #fef3c7;">
+      <ul style="padding-left: 20px; margin: 0;">`;
+      
+  availableList.forEach((item) => {
+    html += `<li style="margin-bottom: 12px; font-weight: bold; color: #27272a;">
+      ${item.vehicleName}
+      <ul style="padding-left: 20px; font-weight: normal; margin-top: 4px; color: #4b5563;">`;
+    item.slots.forEach((slot) => {
+      html += `<li style="margin-bottom: 2px;">${slot}</li>`;
+    });
+    html += `</ul></li>`;
+  });
+  
+  html += `</ul>
+    </div>
+    <p>If you need to book any of these slots, please log in to the <a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}/login" style="color: #d97706; text-decoration: none; font-weight: bold;">Driver Portal</a> and reserve your slot.</p>
+    <p style="font-size: 12px; color: #a1a1aa; margin-top: 30px; border-top: 1px solid #e4e4e7; padding-top: 15px;">
+      This is an automated operational message. Please do not reply directly to this email.
+    </p>
+  </div>`;
+
+  // 4. Send emails to all drivers
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const driver of drivers) {
+    if (!driver.email) continue;
+    try {
+      await transporter.sendMail({
+        from,
+        to: driver.email,
+        subject,
+        text,
+        html,
+      });
+      successCount++;
+    } catch (err) {
+      console.error(`Failed to send daily available vehicles email to ${driver.email}:`, err);
+      failCount++;
+    }
+  }
+
+  console.log(`Daily available vehicles email broadcast completed. Success: ${successCount}, Failed: ${failCount}`);
+  return { success: true, sentCount: successCount, failedCount: failCount };
+}

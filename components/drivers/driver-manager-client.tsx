@@ -14,9 +14,9 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/utils/cn";
 
 interface DriverManagerProps {
-  drivers: (User & { assignedVehicle?: Vehicle[] })[];
+  drivers: (User & { assignedVehicle?: Vehicle | null })[];
   bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
-  vehicles: (Vehicle & { assignedDriver?: User | null })[];
+  vehicles: (Vehicle & { assignedDrivers?: User[] })[];
   currentUserName: string;
 }
 
@@ -27,6 +27,11 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(drivers[0]?.id || null);
   const [allocationVehicleId, setAllocationVehicleId] = useState("");
   const [confirmReassign, setConfirmReassign] = useState(false);
+  const [replaceDriverId, setReplaceDriverId] = useState<string>("");
+
+  useEffect(() => {
+    setReplaceDriverId("");
+  }, [allocationVehicleId, selectedDriverId]);
 
   // Booking Modal State
   const [isBookingOpen, setIsBookingOpen] = useState(false);
@@ -323,14 +328,14 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
     });
   };
 
-  const currentAssignedCar = activeDriver?.assignedVehicle?.[0] || null;
+  const currentAssignedCar = activeDriver?.assignedVehicle || null;
 
   const selectedAllocVehicle = useMemo(() => {
     return vehicles.find((v) => v.id === allocationVehicleId) || null;
   }, [vehicles, allocationVehicleId]);
 
-  const isAlreadyAssigned = !!selectedAllocVehicle?.assignedDriver;
-  const currentAssignedDriverName = selectedAllocVehicle?.assignedDriver?.name;
+  const assignedDrivers = selectedAllocVehicle?.assignedDrivers || [];
+  const assignedDriversCount = assignedDrivers.length;
 
   return (
     <div className="space-y-6">
@@ -433,6 +438,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                             src={(currentAssignedCar as any).imageUrl} 
                             alt={currentAssignedCar.name} 
                             className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                            loading="lazy"
                           />
                         ) : (
                           <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
@@ -449,7 +455,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                         variant="outline"
                         onClick={async () => {
                           startTransition(async () => {
-                            const res = await assignVehicleToDriver(currentAssignedCar.id, null);
+                            const res = await assignVehicleToDriver(null, activeDriver.id);
                             if (res.error) {
                               alert(res.error);
                             } else {
@@ -472,7 +478,6 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                           value={allocationVehicleId}
                           onChange={(e) => {
                             setAllocationVehicleId(e.target.value);
-                            setConfirmReassign(false);
                           }}
                         >
                           <option value="" disabled>-- Allocate Vehicle --</option>
@@ -486,45 +491,58 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                           size="sm"
                           onClick={async () => {
                             if (!allocationVehicleId) return;
-                            if (isAlreadyAssigned && !confirmReassign) {
-                              alert(`Please confirm the reassignment of this vehicle from ${currentAssignedDriverName}.`);
+                            if (assignedDriversCount >= 2 && !replaceDriverId) {
+                              alert(`Please select which of the two existing drivers should be replaced.`);
                               return;
                             }
                             startTransition(async () => {
-                              const res = await assignVehicleToDriver(allocationVehicleId, activeDriver.id);
+                              const res = await assignVehicleToDriver(
+                                allocationVehicleId,
+                                activeDriver.id,
+                                replaceDriverId || null
+                              );
                               if (res.error) {
                                 alert(res.error);
                               } else {
                                 setAllocationVehicleId("");
-                                setConfirmReassign(false);
+                                setReplaceDriverId("");
                                 router.refresh();
                               }
                             });
                           }}
                           className="bg-primary text-white font-semibold h-9 text-xs cursor-pointer"
-                          disabled={isPending || (isAlreadyAssigned && !confirmReassign)}
+                          disabled={isPending || (assignedDriversCount >= 2 && !replaceDriverId)}
                         >
                           Allocate Vehicle
                         </Button>
                       </div>
 
-                      {/* Display assignment details and confirm option */}
-                      {allocationVehicleId && isAlreadyAssigned && (
+                      {/* Display assignment details and replacement option when vehicle is fully allocated (2 drivers) */}
+                      {allocationVehicleId && assignedDriversCount >= 2 && (
                         <div className="border border-amber-500/30 rounded-lg p-3 bg-amber-500/5 space-y-2 max-w-xl">
                           <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
-                            ⚠️ This vehicle is currently permanently assigned to <strong>{currentAssignedDriverName}</strong>.
+                            ⚠️ This vehicle is currently permanently assigned to two drivers: <strong>{assignedDrivers.map(d => d.name).join(" and ")}</strong>.
                           </p>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id="confirm-reassign-checkbox"
-                              checked={confirmReassign}
-                              onChange={(e) => setConfirmReassign(e.target.checked)}
-                              className="h-4 w-4 rounded border-border text-primary focus:ring-primary bg-input cursor-pointer"
-                            />
-                            <label htmlFor="confirm-reassign-checkbox" className="text-xs text-foreground font-semibold cursor-pointer">
-                              Confirm reassignment of this vehicle
-                            </label>
+                          <p className="text-xs text-foreground font-semibold">
+                            Which of the two existing drivers should be replaced/cancelled?
+                          </p>
+                          <div className="space-y-1.5 mt-1">
+                            {assignedDrivers.map((d) => (
+                              <div key={d.id} className="flex items-center gap-2">
+                                <input
+                                  type="radio"
+                                  id={`replace-driver-${d.id}`}
+                                  name="replaceDriver"
+                                  value={d.id}
+                                  checked={replaceDriverId === d.id}
+                                  onChange={() => setReplaceDriverId(d.id)}
+                                  className="h-4 w-4 border-border text-primary focus:ring-primary bg-input cursor-pointer"
+                                />
+                                <label htmlFor={`replace-driver-${d.id}`} className="text-xs text-foreground font-semibold cursor-pointer">
+                                  {d.name} ({d.employeeId})
+                                </label>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       )}
@@ -549,6 +567,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                               src={(b.vehicle as any).imageUrl} 
                               alt={b.vehicle?.name} 
                               className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                              loading="lazy"
                             />
                           ) : (
                             <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
@@ -626,6 +645,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                               src={(b.vehicle as any).imageUrl} 
                               alt={b.vehicle?.name} 
                               className="w-8 h-8 rounded object-cover border border-border shrink-0" 
+                              loading="lazy"
                             />
                           ) : (
                             <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0">
