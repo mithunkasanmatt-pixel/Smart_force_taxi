@@ -1,6 +1,5 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import LandingPage from "@/components/landing/landing-page";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -30,6 +29,6 @@ export default async function Home() {
     }
   }
 
-  // Otherwise, display the high-fidelity public landing page
-  return <LandingPage session={session} />;
+  // Otherwise, redirect directly to the login page
+  redirect("/login");
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { User, Vehicle, Trip } from "@prisma/client";
 import { Search, Clock, User as UserIcon, MapPin, Calendar, Truck, Info, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,8 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
     today.setHours(0, 0, 0, 0);
     return today;
   });
+
+  const dateInputRef = useRef<HTMLInputElement>(null);
   
   // Track which booking is clicked for details (keyed by vehicle ID)
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<Record<string, ClampedBooking | null>>({});
@@ -64,11 +66,31 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
     setSelectedBookingDetails({});
   }, [selectedDate]);
 
+  // Format Helper: 12h Time
+  const formatTime12h = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+  };
+
+  // Format Helper: Full Date
+  const formatFullDate = (date: Date) => {
+    return date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: "numeric" });
+  };
+
   // Boundaries for selected date
   const dayStart = useMemo(() => {
-    const d = new Date(selectedDate);
-    d.setHours(0, 0, 0, 0);
-    return d;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const isToday = selectedDate.toDateString() === today.toDateString();
+
+    if (isToday) {
+      // For today's date, show only the remaining/current hours from the current time onward
+      return new Date();
+    } else {
+      const d = new Date(selectedDate);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
   }, [selectedDate]);
 
   const dayEnd = useMemo(() => {
@@ -79,15 +101,87 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
 
   const now = useMemo(() => new Date(), []);
 
-  // Format Helper: 12h Time
-  const formatTime12h = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
-  };
+  // Dynamic timeline scale to support today's remaining hours & 24h for other dates
+  const timelineScale = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isToday = selectedDate.toDateString() === today.toDateString();
 
-  // Format Helper: Full Date
-  const formatFullDate = (date: Date) => {
-    return date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: "numeric" });
-  };
+    if (!isToday) {
+      return [
+        { label: "12 AM", pct: 0 },
+        { label: "2 AM", pct: (2 / 24) * 100 },
+        { label: "4 AM", pct: (4 / 24) * 100 },
+        { label: "6 AM", pct: (6 / 24) * 100 },
+        { label: "8 AM", pct: (8 / 24) * 100 },
+        { label: "10 AM", pct: (10 / 24) * 100 },
+        { label: "12 PM", pct: (12 / 24) * 100 },
+        { label: "2 PM", pct: (14 / 24) * 100 },
+        { label: "4 PM", pct: (16 / 24) * 100 },
+        { label: "6 PM", pct: (18 / 24) * 100 },
+        { label: "8 PM", pct: (20 / 24) * 100 },
+        { label: "10 PM", pct: (22 / 24) * 100 },
+        { label: "12 AM", pct: 100 }
+      ];
+    }
+
+    const startMs = dayStart.getTime();
+    const endMs = dayEnd.getTime();
+    const totalMs = endMs - startMs;
+    const items = [];
+
+    // First label is current time
+    items.push({
+      label: formatTime12h(dayStart),
+      pct: 0
+    });
+
+    const startHour = dayStart.getHours();
+    for (let h = startHour + 1; h <= 24; h++) {
+      const targetDate = new Date(dayStart);
+      targetDate.setHours(h, 0, 0, 0);
+
+      if (targetDate.getTime() >= endMs) {
+        items.push({
+          label: "12 AM",
+          pct: 100
+        });
+        break;
+      }
+
+      const pct = ((targetDate.getTime() - startMs) / totalMs) * 100;
+      let labelStr = "";
+      const displayHour = h % 12 === 0 ? 12 : h % 12;
+      const ampm = h >= 12 && h < 24 ? "PM" : "AM";
+      labelStr = `${displayHour} ${ampm}`;
+      if (h === 24) labelStr = "12 AM";
+
+      items.push({
+        label: labelStr,
+        pct
+      });
+    }
+
+    // Filter to avoid overlapping text
+    const filteredItems = [];
+    let lastPct = -100;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const isLast = i === items.length - 1;
+      if (i === 0 || isLast) {
+        filteredItems.push(item);
+        lastPct = item.pct;
+      } else {
+        const distFromLast = item.pct - lastPct;
+        const distFromEnd = 100 - item.pct;
+        if (distFromLast >= 10 && distFromEnd >= 10) {
+          filteredItems.push(item);
+          lastPct = item.pct;
+        }
+      }
+    }
+    return filteredItems;
+  }, [selectedDate, dayStart, dayEnd]);
 
   // Process schedule data for each vehicle on the selected day
   const scheduleData = useMemo(() => {
@@ -207,9 +301,53 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
       <div className="border border-border rounded-xl bg-card p-4 space-y-2.5 shadow-sm">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Select Schedule Date (14-Day View)</span>
-          <Badge variant="outline" className="font-semibold text-primary">
-            {formatFullDate(selectedDate)}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="font-semibold text-primary">
+              {formatFullDate(selectedDate)}
+            </Badge>
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 text-xs font-semibold cursor-pointer"
+                onClick={() => {
+                  try {
+                    dateInputRef.current?.showPicker();
+                  } catch (err) {
+                    dateInputRef.current?.click();
+                  }
+                }}
+              >
+                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Calendar</span>
+              </Button>
+              <input
+                ref={dateInputRef}
+                type="date"
+                className="absolute inset-0 opacity-0 w-full h-full pointer-events-none"
+                min={(() => {
+                  const today = new Date();
+                  const yyyy = today.getFullYear();
+                  const mm = String(today.getMonth() + 1).padStart(2, "0");
+                  const dd = String(today.getDate()).padStart(2, "0");
+                  return `${yyyy}-${mm}-${dd}`;
+                })()}
+                value={(() => {
+                  const yyyy = selectedDate.getFullYear();
+                  const mm = String(selectedDate.getMonth() + 1).padStart(2, "0");
+                  const dd = String(selectedDate.getDate()).padStart(2, "0");
+                  return `${yyyy}-${mm}-${dd}`;
+                })()}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    const [year, month, day] = e.target.value.split("-").map(Number);
+                    const newDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+                    setSelectedDate(newDate);
+                  }
+                }}
+              />
+            </div>
+          </div>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none items-center">
           {dateStrip.map((date, idx) => {
@@ -362,20 +500,26 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
               {/* Col 2: Timeline Bar & Details (9 cols) */}
               <div className="md:col-span-9 flex flex-col justify-between space-y-4">
                 {/* Timeline Grid Header Scale */}
-                <div className="relative h-4 w-full text-[9px] text-muted-foreground font-mono font-bold flex justify-between select-none">
-                  <span>12 AM</span>
-                  <span className="hidden sm:inline">2 AM</span>
-                  <span>4 AM</span>
-                  <span className="hidden sm:inline">6 AM</span>
-                  <span>8 AM</span>
-                  <span className="hidden sm:inline">10 AM</span>
-                  <span>12 PM</span>
-                  <span className="hidden sm:inline">2 PM</span>
-                  <span>4 PM</span>
-                  <span className="hidden sm:inline">6 PM</span>
-                  <span>8 PM</span>
-                  <span className="hidden sm:inline">10 PM</span>
-                  <span>12 AM</span>
+                <div className="relative h-4 w-full text-[9px] text-muted-foreground font-mono font-bold select-none">
+                  {timelineScale.map((item, index) => (
+                    <span
+                      key={index}
+                      className={cn(
+                        "absolute whitespace-nowrap",
+                        index === 0
+                          ? "left-0 translate-x-0"
+                          : index === timelineScale.length - 1
+                          ? "right-0 -translate-x-0"
+                          : "-translate-x-1/2",
+                        dayStart.toDateString() === new Date().toDateString()
+                          ? (index % 3 !== 0 && index !== timelineScale.length - 1 ? "hidden md:inline" : "")
+                          : (index % 2 !== 0 ? "hidden sm:inline" : "")
+                      )}
+                      style={index === timelineScale.length - 1 ? undefined : { left: `${item.pct}%` }}
+                    >
+                      {item.label}
+                    </span>
+                  ))}
                 </div>
 
                 {/* Timeline Track */}
@@ -386,12 +530,12 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
                     </div>
                   ) : (
                     <>
-                      {/* Grid guideline markers */}
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((idx) => (
+                      {/* Grid guideline markers aligned with scale */}
+                      {timelineScale.slice(1, -1).map((item, idx) => (
                         <div
                           key={idx}
                           className="absolute h-full w-[1px] bg-border/20"
-                          style={{ left: `${(idx / 12) * 100}%` }}
+                          style={{ left: `${item.pct}%` }}
                         />
                       ))}
 
