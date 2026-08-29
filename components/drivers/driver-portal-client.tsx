@@ -5,6 +5,7 @@ import { useDriverTab } from "./driver-portal-context";
 import { DriverDashboardClient } from "./driver-dashboard-client";
 import { AvailableVehiclesClient } from "./available-vehicles-client";
 import { WeeklyLogClient } from "./weekly-log-client";
+import { useTranslation } from "@/components/layout/language-provider";
 import { User, Vehicle, Trip, WeeklyLog } from "@prisma/client";
 
 interface DriverPortalClientProps {
@@ -29,6 +30,7 @@ export function DriverPortalClient({
   todayBookings,
 }: DriverPortalClientProps) {
   const { activeTab } = useDriverTab();
+  const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -39,7 +41,7 @@ export function DriverPortalClient({
     // Avoid layout shifts or hydrations mismatches by displaying initial server view shell
     return (
       <div className="mx-auto max-w-7xl w-full py-8 text-center text-muted-foreground animate-pulse">
-        Loading Driver Portal...
+        {t("loading_driver_portal")}
       </div>
     );
   }

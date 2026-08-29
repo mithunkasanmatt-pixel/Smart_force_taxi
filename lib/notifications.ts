@@ -76,6 +76,52 @@ Smart Force Taxi Operations Team`;
 }
 
 /**
+ * Sends a password reset OTP code to the driver's email address
+ */
+export async function sendResetPasswordOtpEmail(email: string, name: string, otp: string) {
+  const from = process.env.SMTP_FROM || `"Smart Force Taxi" <noreply@smartforcetaxi.com>`;
+  const subject = "Password Reset Verification Code - Smart Force Taxi";
+  const text = `Hello ${name},
+
+You requested to reset your password. Here is your 6-digit verification code (OTP):
+
+${otp}
+
+This code is valid for 10 minutes. If you did not request this, please ignore this email.
+
+Best regards,
+Smart Force Taxi Operations Team`;
+
+  const html = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; border-radius: 8px;">
+    <h2 style="color: #f59e0b;">Smart Force Taxi</h2>
+    <p>Hello ${name},</p>
+    <p>You requested to reset your password. Here is your 6-digit verification code (OTP):</p>
+    <div style="background-color: #f4f4f5; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center;">
+      <span style="font-family: monospace; font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #27272a;">${otp}</span>
+    </div>
+    <p>This code is valid for 10 minutes. If you did not request this, please ignore this email.</p>
+    <p style="font-size: 12px; color: #a1a1aa; margin-top: 30px; border-top: 1px solid #e4e4e7; padding-top: 15px;">
+      This is an automated operational message. Please do not reply directly to this email.
+    </p>
+  </div>`;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to: email,
+      subject,
+      text,
+      html,
+    });
+    console.log(`Password reset OTP email sent successfully to: ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to send password reset OTP email:", error);
+    return { error };
+  }
+}
+
+/**
  * Triggers a WhatsApp message to the driver's phone containing their credentials
  */
 export async function sendDriverRegistrationWhatsApp(phone: string, name: string, email: string, passwordText: string) {

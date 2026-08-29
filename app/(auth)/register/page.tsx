@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { User, Mail, Lock, CreditCard, Calendar, Briefcase, ShieldAlert, AlertCircle, Loader2 } from "lucide-react";
+import { User, Mail, Lock, CreditCard, Calendar, Briefcase, ShieldAlert, AlertCircle, Loader2, Eye, EyeOff } from "lucide-react";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,12 +13,23 @@ import { registerUser } from "@/actions/register";
 import Link from "next/link";
 import { useTheme } from "@/components/layout/theme-provider";
 import { useTranslation } from "@/components/layout/language-provider";
+import { isWeakPassword } from "@/lib/auth-utils";
+
+const passwordValidation = z.string()
+  .min(8, "Password must be at least 8 characters long")
+  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[0-9]/, "Password must contain at least one number")
+  .regex(/[^a-zA-Z0-9]/, "Password must contain at least one special character")
+  .refine((val) => !isWeakPassword(val), {
+    message: "Simple or weak passwords are not accepted"
+  });
 
 const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string().min(6, "Confirm password must be at least 6 characters"),
+  password: passwordValidation,
+  confirmPassword: z.string().min(1, "Please confirm your password"),
   licenseNumber: z.string().min(5, "License number is required"),
   licenseExpiry: z.string().min(1, "License expiry date is required"),
   experience: z.number().min(0, "Experience must be a positive number"),
@@ -35,6 +46,8 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { theme } = useTheme();
   const { t } = useTranslation();
 
@@ -172,12 +185,19 @@ export default function RegisterPage() {
                     <Lock className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
                     <Input
                       id="password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
-                      className="pl-10 focus-visible:ring-amber-500"
+                      className="pl-10 pr-10 focus-visible:ring-amber-500"
                       disabled={isLoading}
                       {...register("password")}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 h-4.5 w-4.5 text-muted-foreground hover:text-foreground cursor-pointer focus:outline-none"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                   {errors.password && (
                     <p className="text-xs text-red-500 font-medium">{errors.password.message}</p>
@@ -193,12 +213,19 @@ export default function RegisterPage() {
                     <Lock className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
                     <Input
                       id="confirmPassword"
-                      type="password"
+                      type={showConfirmPassword ? "text" : "password"}
                       placeholder="••••••••"
-                      className="pl-10 focus-visible:ring-amber-500"
+                      className="pl-10 pr-10 focus-visible:ring-amber-500"
                       disabled={isLoading}
                       {...register("confirmPassword")}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-3 h-4.5 w-4.5 text-muted-foreground hover:text-foreground cursor-pointer focus:outline-none"
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                   {errors.confirmPassword && (
                     <p className="text-xs text-red-500 font-medium">{errors.confirmPassword.message}</p>

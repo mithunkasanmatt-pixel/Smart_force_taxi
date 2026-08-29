@@ -11,12 +11,14 @@ import { deleteBookingAction } from "@/actions/driver-trips";
 import { Dialog } from "@/components/ui/dialog";
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "@/components/layout/language-provider";
 
 interface BookingHistoryProps {
   bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
 }
 
 export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -56,9 +58,9 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
     <div className="space-y-6">
       {/* Title */}
       <div>
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">Booking History</h2>
+        <h2 className="text-3xl font-bold tracking-tight text-foreground">{t("booking_history")}</h2>
         <p className="text-sm text-muted-foreground">
-          View all vehicle slot bookings, reservation history, and cancel active schedules.
+          {t("booking_history_desc")}
         </p>
       </div>
 
@@ -66,7 +68,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
         <Input
-          placeholder="Search bookings by driver name, vehicle, or reference..."
+          placeholder={t("search_bookings_placeholder")}
           className="pl-10 bg-card"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -79,15 +81,15 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
           <TableContainer>
             <TableHeader>
               <TableRow>
-                <TableHead>Reference</TableHead>
-                <TableHead>Driver Details</TableHead>
-                <TableHead>Vehicle Details</TableHead>
-                <TableHead>Booking Date</TableHead>
-                <TableHead>Timeslot</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Assigned By</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t("reference")}</TableHead>
+                <TableHead>{t("driver_details")}</TableHead>
+                <TableHead>{t("vehicle_details")}</TableHead>
+                <TableHead>{t("booking_date")}</TableHead>
+                <TableHead>{t("timeslot")}</TableHead>
+                <TableHead>{t("duration")}</TableHead>
+                <TableHead>{t("assigned_by")}</TableHead>
+                <TableHead>{t("status")}</TableHead>
+                <TableHead className="text-right">{t("actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -108,7 +110,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
                           <span className="text-[10px] text-muted-foreground block font-mono">{b.driver.employeeId}</span>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground italic">{b.requestedBy || "Unknown"}</span>
+                        <span className="text-muted-foreground italic">{b.requestedBy || t("unknown")}</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm">
@@ -118,7 +120,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
                           <span className="text-[10px] text-muted-foreground block font-mono">{b.vehicle.vehicleNumber}</span>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground italic">No Vehicle</span>
+                        <span className="text-muted-foreground italic">{t("no_vehicle")}</span>
                       )}
                     </TableCell>
                     <TableCell className="text-xs font-medium" suppressHydrationWarning>
@@ -163,10 +165,10 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
                           }}
                           className="h-8 text-xs font-bold cursor-pointer"
                         >
-                          Delete
+                          {t("delete_vehicle")}
                         </Button>
                       ) : (
-                        <span className="text-muted-foreground text-xs italic">Closed</span>
+                        <span className="text-muted-foreground text-xs italic">{t("closed")}</span>
                       )}
                     </TableCell>
                   </TableRow>
@@ -175,7 +177,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
               {filteredBookings.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center text-muted-foreground py-12 text-xs italic">
-                    No bookings found.
+                    {t("no_bookings_found")}
                   </TableCell>
                 </TableRow>
               )}
@@ -191,15 +193,15 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
           setDeleteStep(0);
           setBookingToDelete(null);
         }}
-        title="Confirm Booking Deletion"
+        title={t("confirm_booking_deletion")}
       >
         <div className="space-y-4">
           <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-4 text-red-600">
             <h4 className="font-bold flex items-center gap-1.5 text-sm">
-              ⚠️ DANGER
+              ⚠️ {t("danger")}
             </h4>
             <p className="text-xs mt-1.5 font-medium leading-relaxed">
-              Danger: This action will permanently delete this booking. This cannot be undone.
+              {t("delete_booking_danger_desc")}
             </p>
           </div>
           <div className="flex justify-end gap-3 pt-2">
@@ -212,7 +214,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
               }}
               className="text-xs font-semibold cursor-pointer"
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -220,7 +222,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
               onClick={() => setDeleteStep(2)}
               className="text-xs font-bold cursor-pointer"
             >
-              OK
+              {t("OK")}
             </Button>
           </div>
         </div>
@@ -236,16 +238,16 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
           setInputEmail("");
           setDeleteError(null);
         }}
-        title="Verify Booking Owner Details"
+        title={t("verify_booking_owner")}
       >
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
-            To proceed, please enter the booking user's exact name and email address.
+            {t("verify_booking_owner_desc")}
           </p>
 
           <div className="bg-muted/40 p-3 rounded-lg border border-border/40 text-xs space-y-1 select-all">
-            <div><span className="font-semibold text-muted-foreground">Booking User Name:</span> <span className="font-mono font-bold text-foreground">{bookingToDelete?.driver?.name || bookingToDelete?.requestedBy || ""}</span></div>
-            <div><span className="font-semibold text-muted-foreground">Booking User Email:</span> <span className="font-mono font-bold text-foreground">{bookingToDelete?.driver?.email || "—"}</span></div>
+            <div><span className="font-semibold text-muted-foreground">{t("booking_owner_name")}:</span> <span className="font-mono font-bold text-foreground">{bookingToDelete?.driver?.name || bookingToDelete?.requestedBy || ""}</span></div>
+            <div><span className="font-semibold text-muted-foreground">{t("booking_owner_email")}:</span> <span className="font-mono font-bold text-foreground">{bookingToDelete?.driver?.email || "—"}</span></div>
           </div>
 
           {deleteError && (
@@ -257,7 +259,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
           <div className="space-y-3">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground block">
-                Booking Owner Name
+                {t("booking_owner_name")}
               </label>
               <Input
                 placeholder="e.g. John Doe"
@@ -268,7 +270,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground block">
-                Booking Owner Email
+                {t("booking_owner_email")}
               </label>
               <Input
                 type="email"
@@ -293,7 +295,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
               }}
               className="text-xs font-semibold cursor-pointer"
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -309,7 +311,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
                   inputName.trim() !== expectedName.trim() ||
                   inputEmail.trim().toLowerCase() !== expectedEmail.trim().toLowerCase()
                 ) {
-                  setDeleteError("Verification failed: Entered name or email is incorrect.");
+                  setDeleteError(t("verification_failed_incorrect"));
                   return;
                 }
 
@@ -329,7 +331,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
               disabled={isPending}
               className="text-xs font-bold cursor-pointer"
             >
-              Confirm Delete
+              {isPending ? t("deleting") : t("confirm_delete")}
             </Button>
           </div>
         </div>
