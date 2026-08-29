@@ -58,6 +58,7 @@ export function DriverDashboardClient({
     notes: "",
   });
   const [clickedBookedSlot, setClickedBookedSlot] = useState<any | null>(null);
+  const [activeField, setActiveField] = useState<"from" | "to">("from");
   const [showSundayPopup, setShowSundayPopup] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<string | null>(null);
@@ -342,42 +343,134 @@ export function DriverDashboardClient({
     setBookingError(null);
     setBookingSuccess(null);
 
-    if (!bookingTimes.startTime || (bookingTimes.startTime && bookingTimes.endTime)) {
-      // First click: Set From, clear To
-      setBookingTimes({
-        ...bookingTimes,
-        startTime: slot.startStr,
-        endTime: "",
-      });
-    } else {
-      // Second click: Set To
-      const startVal = new Date(bookingTimes.startTime).getTime();
-      const clickedVal = new Date(slot.startStr).getTime();
+    const slotStart = slot.startStr;
+    const slotEnd = slot.endStr;
 
-      if (clickedVal <= startVal) {
-        // If clicked slot is before or equal to start: reset From
-        setBookingTimes({
-          ...bookingTimes,
-          startTime: slot.startStr,
-          endTime: "",
-        });
-      } else {
-        // Check for 12-hour limit
-        const limit12Hours = 12 * 60 * 60 * 1000;
-        if (clickedVal - startVal > limit12Hours) {
-          setBookingError("Booking duration cannot exceed 12 hours.");
+    // Check conflict for a given start and end range
+    const checkDriverConflict = (startStr: string, endStr: string) => {
+      const s = new Date(startStr);
+      const e = new Date(endStr);
+      return bookings.some((b) => {
+        if (b.status === "CANCELLED" || b.status === "COMPLETED") return false;
+        if (b.driverId !== driver.id) return false;
+        const bStart = new Date(b.startTime);
+        const bEnd = new Date(b.endTime);
+        return bStart < e && bEnd > s;
+      });
+    };
+
+    if (activeField === "from" || !bookingTimes.startTime) {
+      // Selecting / setting From Time
+      const proposedStart = slotStart;
+      const proposedEnd = bookingTimes.endTime;
+
+      if (proposedEnd && new Date(proposedEnd) > new Date(proposedStart)) {
+        // Range validation
+        if (new Date(proposedEnd).getTime() - new Date(proposedStart).getTime() > 12 * 60 * 60 * 1000) {
+          setBookingTimes({
+            ...bookingTimes,
+            startTime: proposedStart,
+            endTime: "",
+          });
+          setActiveField("to");
           return;
         }
-        // Check for any booked slots in between
-        const startValDate = new Date(bookingTimes.startTime);
-        const endValDate = new Date(slot.startStr);
 
+        const startValDate = new Date(proposedStart);
+        const endValDate = new Date(proposedEnd);
         const hasConflictInBetween = liveBookings.some((b) => {
           if (b.status === "CANCELLED" || b.status === "COMPLETED") return false;
           if (b.vehicleId !== activeVehicleForDisplay?.id) return false;
           const bStart = new Date(b.startTime);
           const bEnd = new Date(b.endTime);
-          
+          return bStart < endValDate && bEnd > startValDate;
+        });
+
+        if (hasConflictInBetween) {
+          setBookingError("The selected range overlaps with an existing booking.");
+          setBookingTimes({
+            ...bookingTimes,
+            startTime: proposedStart,
+            endTime: "",
+          });
+          setActiveField("to");
+          return;
+        }
+
+        if (checkDriverConflict(proposedStart, proposedEnd)) {
+          setBookingError("You already have another booking during this time slot.");
+          setBookingTimes({
+            ...bookingTimes,
+            startTime: "",
+            endTime: "",
+          });
+          setActiveField("from");
+          return;
+        }
+
+        setBookingTimes({
+          ...bookingTimes,
+          startTime: proposedStart,
+        });
+        setActiveField("to");
+      } else {
+        // No valid end time set, validate only the selected single slot
+        if (checkDriverConflict(proposedStart, slotEnd)) {
+          setBookingError("You already have another booking during this time slot.");
+          setBookingTimes({
+            ...bookingTimes,
+            startTime: "",
+            endTime: "",
+          });
+          setActiveField("from");
+          return;
+        }
+
+        setBookingTimes({
+          ...bookingTimes,
+          startTime: proposedStart,
+          endTime: "",
+        });
+        setActiveField("to");
+      }
+    } else {
+      // activeField === "to" and bookingTimes.startTime is set
+      const startVal = new Date(bookingTimes.startTime).getTime();
+      const clickedVal = new Date(slotStart).getTime();
+
+      if (clickedVal <= startVal) {
+        // Reset From to this slot and clear To
+        if (checkDriverConflict(slotStart, slotEnd)) {
+          setBookingError("You already have another booking during this time slot.");
+          setBookingTimes({
+            ...bookingTimes,
+            startTime: "",
+            endTime: "",
+          });
+          setActiveField("from");
+          return;
+        }
+
+        setBookingTimes({
+          ...bookingTimes,
+          startTime: slotStart,
+          endTime: "",
+        });
+        setActiveField("to");
+      } else {
+        // Valid proposed range
+        if (clickedVal - startVal > 12 * 60 * 60 * 1000) {
+          setBookingError("Booking duration cannot exceed 12 hours.");
+          return;
+        }
+
+        const startValDate = new Date(bookingTimes.startTime);
+        const endValDate = new Date(slotStart);
+        const hasConflictInBetween = liveBookings.some((b) => {
+          if (b.status === "CANCELLED" || b.status === "COMPLETED") return false;
+          if (b.vehicleId !== activeVehicleForDisplay?.id) return false;
+          const bStart = new Date(b.startTime);
+          const bEnd = new Date(b.endTime);
           return bStart < endValDate && bEnd > startValDate;
         });
 
@@ -386,25 +479,20 @@ export function DriverDashboardClient({
           return;
         }
 
-        // Check for any driver double-bookings in this range
-        const hasDriverConflict = bookings.some((b) => {
-          if (b.status === "CANCELLED" || b.status === "COMPLETED") return false;
-          if (b.driverId !== driver.id) return false;
-          const bStart = new Date(b.startTime);
-          const bEnd = new Date(b.endTime);
-          
-          return bStart < endValDate && bEnd > startValDate;
-        });
-
-        if (hasDriverConflict) {
+        if (checkDriverConflict(bookingTimes.startTime, slotStart)) {
           setBookingError("You already have another booking during this time slot.");
+          setBookingTimes({
+            ...bookingTimes,
+            startTime: "",
+            endTime: "",
+          });
+          setActiveField("from");
           return;
         }
 
-        // Set To
         setBookingTimes({
           ...bookingTimes,
-          endTime: slot.startStr,
+          endTime: slotStart,
         });
       }
     }
@@ -477,6 +565,7 @@ export function DriverDashboardClient({
           purpose: "Corporate Duty",
           notes: "",
         });
+        setActiveField("from");
         router.refresh();
       }
     });
@@ -772,7 +861,15 @@ export function DriverDashboardClient({
               {/* From & To time fields */}
               <div className="grid grid-cols-2 gap-4 border-t border-border/30 pt-4">
                 {/* From Card */}
-                <div className="relative border border-border bg-card rounded-xl p-4 flex flex-col justify-between shadow-sm">
+                <div 
+                  onClick={() => setActiveField("from")}
+                  className={cn(
+                    "relative border rounded-xl p-4 flex flex-col justify-between shadow-sm cursor-pointer transition-all",
+                    activeField === "from"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-border bg-card hover:border-primary/50 text-muted-foreground"
+                  )}
+                >
                   <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">From</span>
                   <div className="flex items-center gap-2.5 mt-1.5">
                     <Clock className="h-5 w-5 text-muted-foreground/60" />
@@ -783,7 +880,15 @@ export function DriverDashboardClient({
                 </div>
 
                 {/* To Card */}
-                <div className="relative border border-border bg-card rounded-xl p-4 flex flex-col justify-between shadow-sm">
+                <div 
+                  onClick={() => setActiveField("to")}
+                  className={cn(
+                    "relative border rounded-xl p-4 flex flex-col justify-between shadow-sm cursor-pointer transition-all",
+                    activeField === "to"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-border bg-card hover:border-primary/50 text-muted-foreground"
+                  )}
+                >
                   <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">To</span>
                   <div className="flex items-center gap-2.5 mt-1.5">
                     <Clock className="h-5 w-5 text-muted-foreground/60" />
@@ -808,6 +913,7 @@ export function DriverDashboardClient({
                         endTime: "",
                       });
                       setClickedBookedSlot(null);
+                      setActiveField("from");
                     }}
                     className="text-[10px] h-7 px-3 font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
                   >

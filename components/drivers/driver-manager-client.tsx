@@ -12,6 +12,38 @@ import { Search, Plus, Clock, MapPin, CheckCircle2, ChevronRight, UserCheck, Tru
 import { useTranslation } from "@/components/layout/language-provider";
 import { useRouter } from "next/navigation";
 import { cn } from "@/utils/cn";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { registerUser } from "@/actions/register";
+import { Mail, Lock, CreditCard, Calendar, Briefcase, ShieldAlert, AlertCircle, Loader2, User as UserIcon, Eye, EyeOff } from "lucide-react";
+import { isWeakPassword } from "@/lib/auth-utils";
+
+const passwordValidation = z.string()
+  .min(8, "Password must be at least 8 characters long")
+  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[0-9]/, "Password must contain at least one number")
+  .regex(/[^a-zA-Z0-9]/, "Password must contain at least one special character")
+  .refine((val) => !isWeakPassword(val), {
+    message: "Simple or weak passwords are not accepted"
+  });
+
+const registerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Please enter a valid email address"),
+  password: passwordValidation,
+  confirmPassword: z.string().min(1, "Please confirm your password"),
+  licenseNumber: z.string().min(5, "License number is required"),
+  licenseExpiry: z.string().min(1, "License expiry date is required"),
+  experience: z.number().min(0, "Experience must be a positive number"),
+  emergencyContact: z.string().min(10, "Emergency contact must be at least 10 digits"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
+type RegisterFormValues = z.infer<typeof registerSchema>;
 
 interface DriverManagerProps {
   drivers: (User & { assignedVehicle?: Vehicle | null })[];
@@ -43,6 +75,68 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
   const [liveBookings, setLiveBookings] = useState<any[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [clickedBookedSlot, setClickedBookedSlot] = useState<any>(null);
+  const [activeField, setActiveField] = useState<"from" | "to">("from");
+
+  // Register Driver popup states
+  const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const [registerSuccess, setRegisterSuccess] = useState(false);
+  const [isRegisterLoading, setIsRegisterLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const {
+    register: registerField,
+    handleSubmit: handleRegisterSubmit,
+    formState: { errors: registerErrors },
+    reset: resetRegisterForm,
+  } = useForm<RegisterFormValues>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      licenseNumber: "",
+      licenseExpiry: "",
+      experience: 0,
+      emergencyContact: "",
+    },
+  });
+
+  const onRegisterSubmit = async (data: RegisterFormValues) => {
+    setIsRegisterLoading(true);
+    setRegisterError(null);
+
+    try {
+      const result = await registerUser({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        licenseNumber: data.licenseNumber,
+        licenseExpiry: data.licenseExpiry,
+        experience: data.experience,
+        emergencyContact: data.emergencyContact,
+      });
+
+      if (result.error) {
+        setRegisterError(result.error);
+        setIsRegisterLoading(false);
+      } else {
+        setRegisterSuccess(true);
+        setIsRegisterLoading(false);
+        setTimeout(() => {
+          setIsRegisterOpen(false);
+          setRegisterSuccess(false);
+          resetRegisterForm();
+          router.refresh();
+        }, 2000);
+      }
+    } catch (err) {
+      setRegisterError("An unexpected error occurred. Please try again.");
+      setIsRegisterLoading(false);
+    }
+  };
 
   const [bookingForm, setBookingForm] = useState({
     vehicleId: "",
@@ -185,36 +279,127 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
     setFormError(null);
     setFormSuccess(false);
 
-    if (!bookingForm.startTime || (bookingForm.startTime && bookingForm.endTime)) {
-      // First click: Set From, clear To
-      setBookingForm({
-        ...bookingForm,
-        startTime: slot.startStr,
-        endTime: "",
-      });
-    } else {
-      // Second click: Set To
-      const startVal = new Date(bookingForm.startTime).getTime();
-      const clickedVal = new Date(slot.startStr).getTime();
+    const slotStart = slot.startStr;
+    const slotEnd = slot.endStr;
 
-      if (clickedVal <= startVal) {
+    // Check conflict for a given start and end range
+    const checkDriverConflict = (startStr: string, endStr: string) => {
+      const s = new Date(startStr);
+      const e = new Date(endStr);
+      return bookings.some((b) => {
+        if (b.status === "CANCELLED" || b.status === "COMPLETED") return false;
+        if (b.driverId !== activeDriver?.id) return false;
+        const bStart = new Date(b.startTime);
+        const bEnd = new Date(b.endTime);
+        return bStart < e && bEnd > s;
+      });
+    };
+
+    if (activeField === "from" || !bookingForm.startTime) {
+      // Selecting / setting From Time
+      const proposedStart = slotStart;
+      const proposedEnd = bookingForm.endTime;
+
+      if (proposedEnd && new Date(proposedEnd) > new Date(proposedStart)) {
+        // Range validation
+        if (new Date(proposedEnd).getTime() - new Date(proposedStart).getTime() > 12 * 60 * 60 * 1000) {
+          setBookingForm({
+            ...bookingForm,
+            startTime: proposedStart,
+            endTime: "",
+          });
+          setActiveField("to");
+          return;
+        }
+
+        const startValDate = new Date(proposedStart);
+        const endValDate = new Date(proposedEnd);
+        const hasConflictInBetween = liveBookings.some((b) => {
+          const bStart = new Date(b.startTime);
+          const bEnd = new Date(b.endTime);
+          return bStart < endValDate && bEnd > startValDate;
+        });
+
+        if (hasConflictInBetween) {
+          setFormError("The selected range overlaps with an existing booking.");
+          setBookingForm({
+            ...bookingForm,
+            startTime: proposedStart,
+            endTime: "",
+          });
+          setActiveField("to");
+          return;
+        }
+
+        if (checkDriverConflict(proposedStart, proposedEnd)) {
+          setFormError("The selected driver already has another booking during this time slot.");
+          setBookingForm({
+            ...bookingForm,
+            startTime: "",
+            endTime: "",
+          });
+          setActiveField("from");
+          return;
+        }
+
         setBookingForm({
           ...bookingForm,
-          startTime: slot.startStr,
+          startTime: proposedStart,
+        });
+        setActiveField("to");
+      } else {
+        // No valid end time set, validate only the selected single slot
+        if (checkDriverConflict(proposedStart, slotEnd)) {
+          setFormError("The selected driver already has another booking during this time slot.");
+          setBookingForm({
+            ...bookingForm,
+            startTime: "",
+            endTime: "",
+          });
+          setActiveField("from");
+          return;
+        }
+
+        setBookingForm({
+          ...bookingForm,
+          startTime: proposedStart,
           endTime: "",
         });
+        setActiveField("to");
+      }
+    } else {
+      // activeField === "to" and bookingForm.startTime is set
+      const startVal = new Date(bookingForm.startTime).getTime();
+      const clickedVal = new Date(slotStart).getTime();
+
+      if (clickedVal <= startVal) {
+        // Reset From to this slot and clear To
+        if (checkDriverConflict(slotStart, slotEnd)) {
+          setFormError("The selected driver already has another booking during this time slot.");
+          setBookingForm({
+            ...bookingForm,
+            startTime: "",
+            endTime: "",
+          });
+          setActiveField("from");
+          return;
+        }
+
+        setBookingForm({
+          ...bookingForm,
+          startTime: slotStart,
+          endTime: "",
+        });
+        setActiveField("to");
       } else {
-        // Check for 12-hour limit
-        const limit12Hours = 12 * 60 * 60 * 1000;
-        if (clickedVal - startVal > limit12Hours) {
+        // Valid proposed range
+        if (clickedVal - startVal > 12 * 60 * 60 * 1000) {
           setFormError("Booking duration cannot exceed 12 hours.");
           return;
         }
 
-        // Check for any booked slots in between
         const startValDate = new Date(bookingForm.startTime);
-        const endValDate = new Date(slot.startStr);
-
+        const endValDate = new Date(slotStart);
         const hasConflictInBetween = liveBookings.some((b) => {
           const bStart = new Date(b.startTime);
           const bEnd = new Date(b.endTime);
@@ -226,24 +411,20 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
           return;
         }
 
-        // Check for any driver double-bookings in this range
-        const hasDriverConflict = bookings.some((b) => {
-          if (b.status === "CANCELLED" || b.status === "COMPLETED") return false;
-          if (b.driverId !== activeDriver?.id) return false;
-          const bStart = new Date(b.startTime);
-          const bEnd = new Date(b.endTime);
-          
-          return bStart < endValDate && bEnd > startValDate;
-        });
-
-        if (hasDriverConflict) {
+        if (checkDriverConflict(bookingForm.startTime, slotStart)) {
           setFormError("The selected driver already has another booking during this time slot.");
+          setBookingForm({
+            ...bookingForm,
+            startTime: "",
+            endTime: "",
+          });
+          setActiveField("from");
           return;
         }
 
         setBookingForm({
           ...bookingForm,
-          endTime: slot.startStr,
+          endTime: slotStart,
         });
       }
     }
@@ -265,6 +446,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
     setSelectedDate(new Date());
     setLiveBookings([]);
     setIsBookingOpen(true);
+    setActiveField("from");
   };
 
   const handleBookingSubmit = (e: React.FormEvent) => {
@@ -320,6 +502,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
         setFormError(res.error);
       } else {
         setFormSuccess(true);
+        setActiveField("from");
         setTimeout(() => {
           setIsBookingOpen(false);
           router.refresh();
@@ -348,7 +531,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
           </p>
         </div>
         <Button
-          onClick={() => router.push("/register")}
+          onClick={() => setIsRegisterOpen(true)}
           className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold shrink-0"
         >
           <Plus className="h-4.5 w-4.5 mr-2" /> Register Driver
@@ -766,9 +949,17 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                   </div>
                 </div>
 
-                {/* From & To Preview */}
+                 {/* From & To Preview */}
                 <div className="grid grid-cols-2 gap-4 border-t border-border/30 pt-4">
-                  <div className="relative border border-border bg-card rounded-xl p-3 flex flex-col justify-between shadow-sm">
+                  <div 
+                    onClick={() => setActiveField("from")}
+                    className={cn(
+                      "relative border rounded-xl p-3 flex flex-col justify-between shadow-sm cursor-pointer transition-all",
+                      activeField === "from"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border bg-card hover:border-primary/50 text-muted-foreground"
+                    )}
+                  >
                     <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">From</span>
                     <div className="flex items-center gap-1.5 mt-1">
                       <Clock className="h-4 w-4 text-muted-foreground/60" />
@@ -777,7 +968,15 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                       </span>
                     </div>
                   </div>
-                  <div className="relative border border-border bg-card rounded-xl p-3 flex flex-col justify-between shadow-sm">
+                  <div 
+                    onClick={() => setActiveField("to")}
+                    className={cn(
+                      "relative border rounded-xl p-3 flex flex-col justify-between shadow-sm cursor-pointer transition-all",
+                      activeField === "to"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border bg-card hover:border-primary/50 text-muted-foreground"
+                    )}
+                  >
                     <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">To</span>
                     <div className="flex items-center gap-1.5 mt-1">
                       <Clock className="h-4 w-4 text-muted-foreground/60" />
@@ -802,6 +1001,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                           endTime: "",
                         });
                         setClickedBookedSlot(null);
+                        setActiveField("from");
                       }}
                       className="text-[9px] h-6 px-2 font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
                     >
@@ -931,6 +1131,229 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
           </div>
         </Dialog>
       )}
+
+      {/* Register Driver Dialog Popup */}
+      <Dialog 
+        isOpen={isRegisterOpen} 
+        onClose={() => {
+          setIsRegisterOpen(false);
+          setRegisterSuccess(false);
+          setRegisterError(null);
+          resetRegisterForm();
+        }} 
+        title="Register Driver"
+        className="max-w-xl"
+      >
+        {registerSuccess ? (
+          <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-6 text-center text-green-600 dark:text-green-400 space-y-2">
+            <h3 className="text-lg font-semibold">Registration Successful!</h3>
+            <p className="text-sm">Driver profile has been created successfully.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleRegisterSubmit(onRegisterSubmit)} className="space-y-4">
+            {registerError && (
+              <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-600 dark:text-red-400">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <p>{registerError}</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Full Name */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-name">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <UserIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-name"
+                    type="text"
+                    placeholder="John Doe"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("name")}
+                  />
+                </div>
+                {registerErrors.name && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.name.message}</p>
+                )}
+              </div>
+
+              {/* Email Address */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-email">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-email"
+                    type="email"
+                    placeholder="john.doe@company.com"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("email")}
+                  />
+                </div>
+                {registerErrors.email && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.email.message}</p>
+                )}
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-password">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    className="pl-10 pr-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("password")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground cursor-pointer focus:outline-none bg-transparent border-none p-0 flex items-center justify-center"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {registerErrors.password && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.password.message}</p>
+                )}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-confirmPassword">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    className="pl-10 pr-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("confirmPassword")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground cursor-pointer focus:outline-none bg-transparent border-none p-0 flex items-center justify-center"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {registerErrors.confirmPassword && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.confirmPassword.message}</p>
+                )}
+              </div>
+
+              {/* License Number */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-licenseNumber">
+                  Driving License Number
+                </label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-licenseNumber"
+                    type="text"
+                    placeholder="DL-8927491"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("licenseNumber")}
+                  />
+                </div>
+                {registerErrors.licenseNumber && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.licenseNumber.message}</p>
+                )}
+              </div>
+
+              {/* License Expiry */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-licenseExpiry">
+                  License Expiry Date
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-licenseExpiry"
+                    type="date"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("licenseExpiry")}
+                  />
+                </div>
+                {registerErrors.licenseExpiry && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.licenseExpiry.message}</p>
+                )}
+              </div>
+
+              {/* Experience */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-experience">
+                  Years of Experience
+                </label>
+                <div className="relative">
+                  <Briefcase className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-experience"
+                    type="number"
+                    placeholder="3"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("experience", { valueAsNumber: true })}
+                  />
+                </div>
+                {registerErrors.experience && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.experience.message}</p>
+                )}
+              </div>
+
+              {/* Emergency Contact */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-emergencyContact">
+                  Emergency Contact Number
+                </label>
+                <div className="relative">
+                  <ShieldAlert className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-emergencyContact"
+                    type="tel"
+                    placeholder="+1 (555) 901-2948"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("emergencyContact")}
+                  />
+                </div>
+                {registerErrors.emergencyContact && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.emergencyContact.message}</p>
+                )}
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold" disabled={isRegisterLoading}>
+              {isRegisterLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t("register_driver")}...
+                </>
+              ) : (
+                t("register_button")
+              )}
+            </Button>
+          </form>
+        )}
+      </Dialog>
     </div>
   );
 }

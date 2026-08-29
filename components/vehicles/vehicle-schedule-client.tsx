@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/utils/cn";
+import { Dialog } from "@/components/ui/dialog";
+import { useTranslation } from "@/components/layout/language-provider";
 
 interface VehicleScheduleClientProps {
   vehicles: (Vehicle & { assignedDrivers?: User[] })[];
@@ -35,6 +37,12 @@ interface TimeSlot {
 }
 
 export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleClientProps) {
+  const { t } = useTranslation();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "AVAILABLE" | "BOOKED" | "MAINTENANCE">("ALL");
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
@@ -47,6 +55,10 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
   
   // Track which booking is clicked for details (keyed by vehicle ID)
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<Record<string, ClampedBooking | null>>({});
+
+  // Vehicle calendar states
+  const [calendarVehicle, setCalendarVehicle] = useState<Vehicle | null>(null);
+  const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date());
 
   // Generate date strip: 14 days starting from today
   const dateStrip = useMemo(() => {
@@ -74,6 +86,42 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
   // Format Helper: Full Date
   const formatFullDate = (date: Date) => {
     return date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: "numeric" });
+  };
+
+  const getDayBookingStatus = (vehicleId: string, date: Date) => {
+    const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+
+    const dayBookings = bookings.filter((b) => {
+      if (b.status === "CANCELLED") return false;
+      if (b.vehicleId !== vehicleId) return false;
+      const bStart = new Date(b.startTime);
+      const bEnd = new Date(b.endTime);
+      return bStart < endOfDay && bEnd > startOfDay;
+    });
+
+    if (dayBookings.length === 0) {
+      return "green";
+    }
+
+    let totalBookedMs = 0;
+    dayBookings.forEach((b) => {
+      const bStart = new Date(b.startTime);
+      const bEnd = new Date(b.endTime);
+      const clampStart = bStart < startOfDay ? startOfDay : bStart;
+      const clampEnd = bEnd > endOfDay ? endOfDay : bEnd;
+      const duration = clampEnd.getTime() - clampStart.getTime();
+      if (duration > 0) {
+        totalBookedMs += duration;
+      }
+    });
+
+    const dayDurationMs = 24 * 60 * 60 * 1000;
+    if (totalBookedMs >= dayDurationMs - 60000) {
+      return "red";
+    } else {
+      return "half";
+    }
   };
 
   // Boundaries for selected date
@@ -287,20 +335,22 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
     });
   }, [scheduleData, searchTerm, statusFilter]);
 
+  if (!mounted) return null;
+
   return (
     <div className="space-y-6">
       {/* Title Header */}
       <div>
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">Vehicle Availability & Booking Schedule</h2>
+        <h2 className="text-3xl font-bold tracking-tight text-foreground">{t("vehicle_schedule")}</h2>
         <p className="text-sm text-muted-foreground">
-          Centralized overview of real-time vehicle availability, booked slots, and free periods for the next 2 weeks.
+          {t("vehicle_schedule_desc")}
         </p>
       </div>
 
       {/* Date Strip Navigation */}
       <div className="border border-border rounded-xl bg-card p-4 space-y-2.5 shadow-sm">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Select Schedule Date (14-Day View)</span>
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t("select_schedule_date")}</span>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="font-semibold text-primary">
               {formatFullDate(selectedDate)}
@@ -319,7 +369,7 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
                 }}
               >
                 <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                <span>Calendar</span>
+                <span>{t("booking_calendar")}</span>
               </Button>
               <input
                 ref={dateInputRef}
@@ -373,7 +423,7 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
                 <span className="text-[9px] uppercase font-bold tracking-wider">{monthStr}</span>
                 <span className="text-lg font-extrabold">{dayNum}</span>
                 <span className={cn("text-[9px] font-semibold", isToday && !isSelected && "text-primary")}>
-                  {isToday ? "TODAY" : dayName}
+                  {isToday ? t("TODAY") : dayName}
                 </span>
               </button>
             );
@@ -386,14 +436,14 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
         <div className="relative w-full md:max-w-md">
           <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
           <Input
-            placeholder="Search by vehicle name, brand, plate number..."
+            placeholder={t("search_vehicles_placeholder")}
             className="pl-10"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto shrink-0 scrollbar-none">
-          <span className="text-xs font-semibold text-muted-foreground hidden lg:inline">Filter Status Now:</span>
+          <span className="text-xs font-semibold text-muted-foreground hidden lg:inline">{t("filter_status_now")}</span>
           <div className="flex gap-1.5 p-1 bg-muted/40 rounded-lg border border-border/60">
             {(["ALL", "AVAILABLE", "BOOKED", "MAINTENANCE"] as const).map((status) => (
               <button
@@ -406,10 +456,10 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {status === "ALL" && "All Vehicles"}
-                {status === "AVAILABLE" && "Available Now"}
-                {status === "BOOKED" && "Booked Now"}
-                {status === "MAINTENANCE" && "Maintenance"}
+                {status === "ALL" && t("all_vehicles")}
+                {status === "AVAILABLE" && t("available_now")}
+                {status === "BOOKED" && t("booked_now")}
+                {status === "MAINTENANCE" && t("maintenance")}
               </button>
             ))}
           </div>
@@ -448,22 +498,35 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
                     </div>
                   </div>
                   
-                  {/* Plate Number Badge */}
-                  <div className="mt-2.5">
+                  {/* Plate Number Badge & Calendar Icon Option */}
+                  <div className="mt-2.5 flex items-center gap-2">
                     <Badge variant="outline" className="font-mono text-[10px] font-bold bg-muted/30">
                       {vehicle.vehicleNumber}
                     </Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-6 w-6 p-0 rounded-md cursor-pointer hover:border-primary shrink-0"
+                      onClick={() => {
+                        setCalendarVehicle(vehicle);
+                        setCurrentMonth(new Date());
+                      }}
+                      title="View Vehicle Calendar Schedule"
+                    >
+                      <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
                   </div>
                 </div>
 
                 <div className="space-y-2 border-t border-border/30 pt-3">
                   {/* Permanent Drivers */}
                   <div className="text-[10px]">
-                    <span className="text-muted-foreground block font-bold uppercase tracking-wider">Allocated Drivers:</span>
+                    <span className="text-muted-foreground block font-bold uppercase tracking-wider">{t("allocated_drivers")}</span>
                     <span className="font-semibold text-foreground">
                       {vehicle.assignedDrivers && vehicle.assignedDrivers.length > 0
                         ? vehicle.assignedDrivers.map((d) => d.name).join(", ")
-                        : "Unallocated"}
+                        : t("unallocated")}
                     </span>
                   </div>
 
@@ -471,26 +534,26 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
                   <div className="flex flex-wrap items-center gap-2">
                     {currentStatus === "AVAILABLE" && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20 uppercase">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" /> Available Now
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" /> {t("available_now")}
                       </span>
                     )}
                     {currentStatus === "BOOKED" && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 uppercase">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" /> Booked Now
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" /> {t("booked_now")}
                       </span>
                     )}
                     {currentStatus === "MAINTENANCE" && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-red-600 bg-red-500/10 px-2 py-0.5 rounded-full border border-red-500/20 uppercase">
-                        <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> Maintenance
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> {t("maintenance")}
                       </span>
                     )}
                     {isHighUsage ? (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/25">
-                        🟢 High Usage ({totalBookingsCount} bookings)
+                        🟢 {t("high_usage")} ({totalBookingsCount} {t("bookings")})
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/25">
-                        🔴 Low Usage ({totalBookingsCount} bookings)
+                        🔴 {t("low_usage")} ({totalBookingsCount} {t("bookings")})
                       </span>
                     )}
                   </div>
@@ -640,27 +703,27 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
                   <div className="p-4 border border-primary/20 bg-primary/5 rounded-xl space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="flex justify-between items-start">
                       <h5 className="font-extrabold text-xs text-primary uppercase tracking-wider flex items-center gap-1">
-                        <Info className="h-3.5 w-3.5" /> Booking Reference Details: {selectedDetails.tripNumber}
+                        <Info className="h-3.5 w-3.5" /> {t("booking_confirmed_success")}: {selectedDetails.tripNumber}
                       </h5>
                       <Badge variant="info" className="uppercase text-[9px]">{selectedDetails.status}</Badge>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                       <div>
-                        <span className="text-muted-foreground block text-[9px] uppercase font-bold">Driver Info</span>
+                        <span className="text-muted-foreground block text-[9px] uppercase font-bold">{t("driver_details")}</span>
                         <span className="font-semibold text-foreground flex items-center gap-1">
                           <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />
                           {selectedDetails.driverName} {selectedDetails.driverPhone ? `(${selectedDetails.driverPhone})` : ""}
                         </span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground block text-[9px] uppercase font-bold">Full Shift Schedule</span>
+                        <span className="text-muted-foreground block text-[9px] uppercase font-bold">{t("schedule")}</span>
                         <span className="font-semibold text-foreground font-mono">
                           {selectedDetails.startTime.toLocaleString([], { dateStyle: "short", timeStyle: "short" })} - {selectedDetails.endTime.toLocaleTimeString([], { timeStyle: "short" })}
                         </span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground block text-[9px] uppercase font-bold">Route / Depot</span>
+                        <span className="text-muted-foreground block text-[9px] uppercase font-bold">{t("route")}</span>
                         <span className="font-semibold text-foreground flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                           {selectedDetails.pickup} &rarr; {selectedDetails.destination}
@@ -670,12 +733,12 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1 border-t border-border/30">
                       <div>
-                        <span className="text-muted-foreground block text-[9px] uppercase font-bold">Purpose</span>
+                        <span className="text-muted-foreground block text-[9px] uppercase font-bold">{t("purpose")}</span>
                         <span className="font-semibold text-foreground">{selectedDetails.purpose}</span>
                       </div>
                       {selectedDetails.notes && (
                         <div>
-                          <span className="text-muted-foreground block text-[9px] uppercase font-bold">Notes</span>
+                          <span className="text-muted-foreground block text-[9px] uppercase font-bold">{t("notes")}</span>
                           <span className="font-semibold text-foreground italic">{selectedDetails.notes}</span>
                         </div>
                       )}
@@ -689,9 +752,133 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
 
         {filteredSchedule.length === 0 && (
           <div className="text-center py-16 text-muted-foreground border border-dashed border-border rounded-xl bg-card">
-            No vehicles match the selected search or status filter.
+            {t("no_vehicles_match")}
           </div>
         )}
+      {calendarVehicle && (
+        <Dialog
+          isOpen={!!calendarVehicle}
+          onClose={() => setCalendarVehicle(null)}
+          title={`${t("booking_calendar")} - ${calendarVehicle.brand} ${calendarVehicle.name}`}
+          className="max-w-md"
+        >
+          <div className="space-y-4">
+            {/* Month Navigation */}
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 cursor-pointer"
+                onClick={() => {
+                  setCurrentMonth((prev) => {
+                    const d = new Date(prev);
+                    d.setMonth(prev.getMonth() - 1);
+                    return d;
+                  });
+                }}
+              >
+                &larr;
+              </Button>
+              <span className="text-sm font-bold text-foreground">
+                {currentMonth.toLocaleString("default", { month: "long", year: "numeric" })}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 cursor-pointer"
+                onClick={() => {
+                  setCurrentMonth((prev) => {
+                    const d = new Date(prev);
+                    d.setMonth(prev.getMonth() + 1);
+                    return d;
+                  });
+                }}
+              >
+                &rarr;
+              </Button>
+            </div>
+
+            {/* Calendar Grid */}
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {/* Day headers */}
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+                <span key={day} className="text-[10px] font-bold text-muted-foreground uppercase py-1">
+                  {day}
+                </span>
+              ))}
+
+              {/* Days */}
+              {(() => {
+                const year = currentMonth.getFullYear();
+                const month = currentMonth.getMonth();
+                const firstDayIndex = new Date(year, month, 1).getDay();
+                const totalDays = new Date(year, month + 1, 0).getDate();
+
+                const cells = [];
+                for (let i = 0; i < firstDayIndex; i++) {
+                  cells.push(<div key={`empty-${i}`} className="h-10" />);
+                }
+
+                for (let d = 1; d <= totalDays; d++) {
+                  const cellDate = new Date(year, month, d);
+                  const status = getDayBookingStatus(calendarVehicle.id, cellDate);
+
+                  let indicatorElement = null;
+                  if (status === "green") {
+                    indicatorElement = (
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-500 border border-green-600/30 shrink-0" title={t("available")} />
+                    );
+                  } else if (status === "red") {
+                    indicatorElement = (
+                      <div className="w-2.5 h-2.5 rounded-full bg-red-500 border border-red-600/30 shrink-0" title={t("fully_booked")} />
+                    );
+                  } else {
+                    indicatorElement = (
+                      <div 
+                        className="w-2.5 h-2.5 rounded-full border border-border shrink-0" 
+                        style={{ background: "linear-gradient(90deg, #ef4444 50%, #22c55e 50%)" }}
+                        title={t("partially_booked")}
+                      />
+                    );
+                  }
+
+                  cells.push(
+                    <div
+                      key={`day-${d}`}
+                      className="h-10 border border-border/20 rounded-lg flex flex-col items-center justify-between p-1 bg-muted/5 hover:bg-muted/10 transition-colors"
+                    >
+                      <span className="text-[10px] font-semibold text-foreground leading-none">{d}</span>
+                      {indicatorElement}
+                    </div>
+                  );
+                }
+                return cells;
+              })()}
+            </div>
+
+            {/* Legend */}
+            <div className="flex justify-around pt-3 border-t border-border text-[10px] font-semibold text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500 border border-green-600/30" />
+                <span>{t("available")}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div 
+                  className="w-2.5 h-2.5 rounded-full border border-border" 
+                  style={{ background: "linear-gradient(90deg, #ef4444 50%, #22c55e 50%)" }}
+                />
+                <span>{t("partially_booked")}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500 border border-red-600/30" />
+                <span>{t("fully_booked")}</span>
+              </div>
+            </div>
+          </div>
+        </Dialog>
+      )}
       </div>
     </div>
   );

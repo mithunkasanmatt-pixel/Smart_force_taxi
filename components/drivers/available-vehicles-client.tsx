@@ -8,6 +8,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Dialog } from "@/components/ui/dialog";
 import { CarBookingGrid } from "@/components/vehicles/car-booking-grid";
 import { Vehicle, Trip, User } from "@prisma/client";
+import { useTranslation } from "@/components/layout/language-provider";
 
 interface AvailableVehiclesClientProps {
   vehicles: Vehicle[];
@@ -24,6 +25,7 @@ export function AvailableVehiclesClient({
   currentUserRole,
   currentUserName,
 }: AvailableVehiclesClientProps) {
+  const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedVehicleForBooking, setSelectedVehicleForBooking] = useState<Vehicle | null>(null);
@@ -41,9 +43,9 @@ export function AvailableVehiclesClient({
     <div className="mx-auto max-w-7xl w-full space-y-6">
       {/* Title section */}
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Available Fleet</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t("available_fleet")}</h2>
         <p className="text-sm text-muted-foreground">
-          View all currently unassigned and free vehicles and select one to book.
+          {t("available_fleet_desc")}
         </p>
       </div>
 
@@ -51,7 +53,7 @@ export function AvailableVehiclesClient({
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
         <Input
-          placeholder="Search available cars by name or plate number..."
+          placeholder={t("search_available_cars")}
           className="pl-10 bg-card"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -95,14 +97,14 @@ export function AvailableVehiclesClient({
                 <div className="grid grid-cols-2 gap-2 text-xs border-b border-border/40 pb-3">
                   <div className="flex items-center gap-1.5 text-muted-foreground">
                     <Users className="h-3.5 w-3.5" />
-                    <span>{vehicle.seatingCapacity} Seater</span>
+                    <span>{vehicle.seatingCapacity} {t("seats_label")}</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-muted-foreground justify-end">
                     <Milestone className="h-3.5 w-3.5" />
                     <span className="font-mono">{vehicle.odometer.toLocaleString()} km</span>
                   </div>
                   <div className="col-span-2 mt-1">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Plate Number</span>
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">{t("plate_number")}</span>
                     <span className="block font-mono text-sm font-semibold text-foreground">{vehicle.vehicleNumber}</span>
                   </div>
                 </div>
@@ -116,7 +118,7 @@ export function AvailableVehiclesClient({
                 className="w-full inline-flex items-center justify-center rounded-lg text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring bg-amber-500 hover:bg-amber-600 text-zinc-950 hover:glow-primary h-9 px-3 gap-1.5 cursor-pointer font-bold border-none"
               >
                 <Calendar className="h-4 w-4" />
-                Book This Vehicle
+                {t("book_vehicle")}
               </button>
             </div>
           </Card>
@@ -125,15 +127,14 @@ export function AvailableVehiclesClient({
         {filteredVehicles.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground glass rounded-xl border border-border">
             <Truck className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
-            <h3 className="font-semibold text-foreground">No vehicles found</h3>
-            <p className="text-xs mt-1">There are no available vehicles matching your search criteria.</p>
+            <h3 className="font-semibold text-foreground">{t("no_vehicles_available")}</h3>
           </div>
         )}
       </div>
 
       {/* Car Slot Booking Calendar Dialog */}
       {selectedVehicleForBooking && (
-        <Dialog isOpen={!!selectedVehicleForBooking} onClose={() => setSelectedVehicleForBooking(null)} title="Car Slot Booking Calendar" className="max-w-4xl">
+        <Dialog isOpen={!!selectedVehicleForBooking} onClose={() => setSelectedVehicleForBooking(null)} title={t("booking_calendar")} className="max-w-4xl">
           <CarBookingGrid
             vehicle={selectedVehicleForBooking}
             bookings={bookings.filter((b) => b.vehicleId === selectedVehicleForBooking.id)}
