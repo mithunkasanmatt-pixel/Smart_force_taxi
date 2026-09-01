@@ -88,9 +88,10 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
     return date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: "numeric" });
   };
 
-  const getDayBookingStatus = (vehicleId: string, date: Date) => {
+  const getDayBookingStats = (vehicleId: string, date: Date) => {
     const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
     const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+    const totalDayMs = 24 * 60 * 60 * 1000;
 
     const dayBookings = bookings.filter((b) => {
       if (b.status === "CANCELLED") return false;
@@ -101,44 +102,59 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
     });
 
     if (dayBookings.length === 0) {
-      return "green";
+      return {
+        bookedMs: 0,
+        bookedHours: 0,
+        bookedPercentage: 0,
+        availablePercentage: 100,
+      };
     }
 
-    let totalBookedMs = 0;
-    dayBookings.forEach((b) => {
-      const bStart = new Date(b.startTime);
-      const bEnd = new Date(b.endTime);
-      const clampStart = bStart < startOfDay ? startOfDay : bStart;
-      const clampEnd = bEnd > endOfDay ? endOfDay : bEnd;
-      const duration = clampEnd.getTime() - clampStart.getTime();
-      if (duration > 0) {
-        totalBookedMs += duration;
-      }
+    // Clamp intervals to the day's bounds [startOfDay, endOfDay]
+    const intervals: { start: number; end: number }[] = dayBookings.map((b) => {
+      const s = Math.max(new Date(b.startTime).getTime(), startOfDay.getTime());
+      const e = Math.min(new Date(b.endTime).getTime(), endOfDay.getTime() + 1);
+      return { start: s, end: Math.max(s, e) };
     });
 
-    const dayDurationMs = 24 * 60 * 60 * 1000;
-    if (totalBookedMs >= dayDurationMs - 60000) {
-      return "red";
-    } else {
-      return "half";
+    // Sort by start time
+    intervals.sort((a, b) => a.start - b.start);
+
+    // Merge overlapping intervals to avoid double-counting
+    const merged: { start: number; end: number }[] = [];
+    for (const interval of intervals) {
+      if (merged.length === 0) {
+        merged.push(interval);
+      } else {
+        const last = merged[merged.length - 1];
+        if (interval.start <= last.end) {
+          last.end = Math.max(last.end, interval.end);
+        } else {
+          merged.push(interval);
+        }
+      }
     }
+
+    const totalBookedMs = merged.reduce((acc, curr) => acc + (curr.end - curr.start), 0);
+    const clampedBookedMs = Math.min(Math.max(totalBookedMs, 0), totalDayMs);
+
+    const bookedPercentage = Math.round((clampedBookedMs / totalDayMs) * 1000) / 10;
+    const availablePercentage = Math.max(0, Math.round((100 - bookedPercentage) * 10) / 10);
+    const bookedHours = Math.round((clampedBookedMs / (1000 * 60 * 60)) * 10) / 10;
+
+    return {
+      bookedMs: clampedBookedMs,
+      bookedHours,
+      bookedPercentage,
+      availablePercentage,
+    };
   };
 
-  // Boundaries for selected date
+  // Boundaries for selected date (full 24 hours 00:00 - 24:00)
   const dayStart = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const isToday = selectedDate.toDateString() === today.toDateString();
-
-    if (isToday) {
-      // For today's date, show only the remaining/current hours from the current time onward
-      return new Date();
-    } else {
-      const d = new Date(selectedDate);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    }
+    const d = new Date(selectedDate);
+    d.setHours(0, 0, 0, 0);
+    return d;
   }, [selectedDate]);
 
   const dayEnd = useMemo(() => {
@@ -149,87 +165,24 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
 
   const now = useMemo(() => new Date(), []);
 
-  // Dynamic timeline scale to support today's remaining hours & 24h for other dates
+  // Full 24-hour timeline scale (00:00–24:00)
   const timelineScale = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const isToday = selectedDate.toDateString() === today.toDateString();
-
-    if (!isToday) {
-      return [
-        { label: "12 AM", pct: 0 },
-        { label: "2 AM", pct: (2 / 24) * 100 },
-        { label: "4 AM", pct: (4 / 24) * 100 },
-        { label: "6 AM", pct: (6 / 24) * 100 },
-        { label: "8 AM", pct: (8 / 24) * 100 },
-        { label: "10 AM", pct: (10 / 24) * 100 },
-        { label: "12 PM", pct: (12 / 24) * 100 },
-        { label: "2 PM", pct: (14 / 24) * 100 },
-        { label: "4 PM", pct: (16 / 24) * 100 },
-        { label: "6 PM", pct: (18 / 24) * 100 },
-        { label: "8 PM", pct: (20 / 24) * 100 },
-        { label: "10 PM", pct: (22 / 24) * 100 },
-        { label: "12 AM", pct: 100 }
-      ];
-    }
-
-    const startMs = dayStart.getTime();
-    const endMs = dayEnd.getTime();
-    const totalMs = endMs - startMs;
-    const items = [];
-
-    // First label is current time
-    items.push({
-      label: formatTime12h(dayStart),
-      pct: 0
-    });
-
-    const startHour = dayStart.getHours();
-    for (let h = startHour + 1; h <= 24; h++) {
-      const targetDate = new Date(dayStart);
-      targetDate.setHours(h, 0, 0, 0);
-
-      if (targetDate.getTime() >= endMs) {
-        items.push({
-          label: "12 AM",
-          pct: 100
-        });
-        break;
-      }
-
-      const pct = ((targetDate.getTime() - startMs) / totalMs) * 100;
-      let labelStr = "";
-      const displayHour = h % 12 === 0 ? 12 : h % 12;
-      const ampm = h >= 12 && h < 24 ? "PM" : "AM";
-      labelStr = `${displayHour} ${ampm}`;
-      if (h === 24) labelStr = "12 AM";
-
-      items.push({
-        label: labelStr,
-        pct
-      });
-    }
-
-    // Filter to avoid overlapping text
-    const filteredItems = [];
-    let lastPct = -100;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const isLast = i === items.length - 1;
-      if (i === 0 || isLast) {
-        filteredItems.push(item);
-        lastPct = item.pct;
-      } else {
-        const distFromLast = item.pct - lastPct;
-        const distFromEnd = 100 - item.pct;
-        if (distFromLast >= 10 && distFromEnd >= 10) {
-          filteredItems.push(item);
-          lastPct = item.pct;
-        }
-      }
-    }
-    return filteredItems;
-  }, [selectedDate, dayStart, dayEnd]);
+    return [
+      { label: "12 AM", pct: 0 },
+      { label: "2 AM", pct: (2 / 24) * 100 },
+      { label: "4 AM", pct: (4 / 24) * 100 },
+      { label: "6 AM", pct: (6 / 24) * 100 },
+      { label: "8 AM", pct: (8 / 24) * 100 },
+      { label: "10 AM", pct: (10 / 24) * 100 },
+      { label: "12 PM", pct: (12 / 24) * 100 },
+      { label: "2 PM", pct: (14 / 24) * 100 },
+      { label: "4 PM", pct: (16 / 24) * 100 },
+      { label: "6 PM", pct: (18 / 24) * 100 },
+      { label: "8 PM", pct: (20 / 24) * 100 },
+      { label: "10 PM", pct: (22 / 24) * 100 },
+      { label: "12 AM", pct: 100 }
+    ];
+  }, []);
 
   // Process schedule data for each vehicle on the selected day
   const scheduleData = useMemo(() => {
@@ -574,9 +527,7 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
                           : index === timelineScale.length - 1
                           ? "right-0 -translate-x-0"
                           : "-translate-x-1/2",
-                        dayStart.toDateString() === new Date().toDateString()
-                          ? (index % 3 !== 0 && index !== timelineScale.length - 1 ? "hidden md:inline" : "")
-                          : (index % 2 !== 0 ? "hidden sm:inline" : "")
+                        index % 2 !== 0 ? "hidden sm:inline" : ""
                       )}
                       style={index === timelineScale.length - 1 ? undefined : { left: `${item.pct}%` }}
                     >
@@ -818,39 +769,54 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
 
                 const cells = [];
                 for (let i = 0; i < firstDayIndex; i++) {
-                  cells.push(<div key={`empty-${i}`} className="h-10" />);
+                  cells.push(<div key={`empty-${i}`} className="h-[52px]" />);
                 }
 
                 for (let d = 1; d <= totalDays; d++) {
                   const cellDate = new Date(year, month, d);
-                  const status = getDayBookingStatus(calendarVehicle.id, cellDate);
+                  const stats = getDayBookingStats(calendarVehicle.id, cellDate);
 
-                  let indicatorElement = null;
-                  if (status === "green") {
-                    indicatorElement = (
-                      <div className="w-2.5 h-2.5 rounded-full bg-green-500 border border-green-600/30 shrink-0" title={t("available")} />
-                    );
-                  } else if (status === "red") {
-                    indicatorElement = (
-                      <div className="w-2.5 h-2.5 rounded-full bg-red-500 border border-red-600/30 shrink-0" title={t("fully_booked")} />
-                    );
-                  } else {
-                    indicatorElement = (
-                      <div 
-                        className="w-2.5 h-2.5 rounded-full border border-border shrink-0" 
-                        style={{ background: "linear-gradient(90deg, #ef4444 50%, #22c55e 50%)" }}
-                        title={t("partially_booked")}
-                      />
-                    );
+                  let bookedPctDisplay = Math.round(stats.bookedPercentage);
+                  let availPctDisplay = 100 - bookedPctDisplay;
+                  if (stats.bookedPercentage > 0 && bookedPctDisplay === 0) {
+                    bookedPctDisplay = 1;
+                    availPctDisplay = 99;
+                  } else if (stats.bookedPercentage < 100 && bookedPctDisplay === 100) {
+                    bookedPctDisplay = 99;
+                    availPctDisplay = 1;
                   }
 
                   cells.push(
                     <div
                       key={`day-${d}`}
-                      className="h-10 border border-border/20 rounded-lg flex flex-col items-center justify-between p-1 bg-muted/5 hover:bg-muted/10 transition-colors"
+                      className="h-[52px] border border-border/30 rounded-lg flex flex-col items-center justify-between p-1 bg-muted/5 hover:bg-muted/15 transition-colors cursor-default"
+                      title={`${cellDate.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}: ${bookedPctDisplay}% Booked (${stats.bookedHours}h) • ${availPctDisplay}% Available`}
                     >
-                      <span className="text-[10px] font-semibold text-foreground leading-none">{d}</span>
-                      {indicatorElement}
+                      <span className="text-[10px] font-bold text-foreground leading-none">{d}</span>
+                      
+                      {/* 24-Hour Percentage Bar */}
+                      <div className="w-full h-4 rounded overflow-hidden flex bg-muted/30 border border-black/10 dark:border-white/10 shadow-inner shrink-0">
+                        {bookedPctDisplay > 0 && (
+                          <div
+                            className="h-full bg-red-500 dark:bg-red-600 flex items-center justify-center transition-all shrink-0 overflow-hidden"
+                            style={{ width: `${bookedPctDisplay}%` }}
+                          >
+                            <span className="text-[8px] font-extrabold text-white leading-none px-0.5 truncate drop-shadow-xs">
+                              {bookedPctDisplay}%
+                            </span>
+                          </div>
+                        )}
+                        {availPctDisplay > 0 && (
+                          <div
+                            className="h-full bg-emerald-500 dark:bg-emerald-600 flex items-center justify-center transition-all shrink-0 overflow-hidden"
+                            style={{ width: `${availPctDisplay}%` }}
+                          >
+                            <span className="text-[8px] font-extrabold text-white leading-none px-0.5 truncate drop-shadow-xs">
+                              {availPctDisplay}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 }
@@ -861,19 +827,16 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
             {/* Legend */}
             <div className="flex justify-around pt-3 border-t border-border text-[10px] font-semibold text-muted-foreground">
               <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-green-500 border border-green-600/30" />
-                <span>{t("available")}</span>
+                <div className="w-4 h-3 rounded bg-emerald-500 flex items-center justify-center text-[7px] font-bold text-white">
+                  %
+                </div>
+                <span>{t("available")} (Free %)</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <div 
-                  className="w-2.5 h-2.5 rounded-full border border-border" 
-                  style={{ background: "linear-gradient(90deg, #ef4444 50%, #22c55e 50%)" }}
-                />
-                <span>{t("partially_booked")}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500 border border-red-600/30" />
-                <span>{t("fully_booked")}</span>
+                <div className="w-4 h-3 rounded bg-red-500 flex items-center justify-center text-[7px] font-bold text-white">
+                  %
+                </div>
+                <span>{t("fully_booked")} (Booked %)</span>
               </div>
             </div>
           </div>
