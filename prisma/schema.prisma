@@ -137,6 +137,7 @@ model WeeklyLog {
   driverId   String
   driver     User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
   imageUrl   String
+  message    String?
   uploadedAt DateTime @default(now())
   
   createdAt  DateTime @default(now())

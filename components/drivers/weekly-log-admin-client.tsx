@@ -76,6 +76,7 @@ export function WeeklyLogAdminClient({ initialLogs }: WeeklyLogAdminClientProps)
                   <TableHead>Driver Name</TableHead>
                   <TableHead>Employee ID</TableHead>
                   <TableHead>Upload Date & Time</TableHead>
+                  <TableHead>Message</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -100,6 +101,13 @@ export function WeeklyLogAdminClient({ initialLogs }: WeeklyLogAdminClientProps)
                           "Loading..."
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell className="text-xs max-w-xs">
+                      {log.message ? (
+                        <span className="italic text-foreground line-clamp-2">"{log.message}"</span>
+                      ) : (
+                        <span className="text-muted-foreground/60 italic text-[11px]">None</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {log.driver?.phone || "—"}
@@ -128,7 +136,7 @@ export function WeeklyLogAdminClient({ initialLogs }: WeeklyLogAdminClientProps)
                 ))}
                 {filteredLogs.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-10 text-muted-foreground italic text-xs">
+                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground italic text-xs">
                       No logs found.
                     </TableCell>
                   </TableRow>
@@ -157,6 +165,13 @@ export function WeeklyLogAdminClient({ initialLogs }: WeeklyLogAdminClientProps)
                 <span className="font-semibold">{mounted ? new Date(selectedLog.uploadedAt).toLocaleString() : "Loading..."}</span>
               </div>
             </div>
+
+            {selectedLog.message && (
+              <div className="bg-muted/20 p-3 rounded-lg border border-border/40 text-xs space-y-1">
+                <span className="font-semibold text-muted-foreground block text-[11px]">Driver Message:</span>
+                <p className="text-foreground italic whitespace-pre-wrap">{selectedLog.message}</p>
+              </div>
+            )}
             
             <div className="border border-border rounded-lg overflow-hidden bg-black/40 flex items-center justify-center p-2">
               <img 

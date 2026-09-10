@@ -21,6 +21,7 @@ export function WeeklyLogClient({ driver, initialLogs }: WeeklyLogClientProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [base64Image, setBase64Image] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [userMessage, setUserMessage] = useState("");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const isSunday = new Date().getDay() === 0;
@@ -71,7 +72,7 @@ export function WeeklyLogClient({ driver, initialLogs }: WeeklyLogClientProps) {
     setMessage(null);
 
     try {
-      const res = await uploadWeeklyScreenshotAction(driver.id, base64Image);
+      const res = await uploadWeeklyScreenshotAction(driver.id, base64Image, userMessage);
       if (res.error) {
         setMessage({ type: "error", text: res.error });
       } else {
@@ -79,6 +80,7 @@ export function WeeklyLogClient({ driver, initialLogs }: WeeklyLogClientProps) {
         setFile(null);
         setPreviewUrl(null);
         setBase64Image(null);
+        setUserMessage("");
         
         // Refresh logs list
         const refreshed = await getDriverWeeklyLogsAction(driver.id);
@@ -178,6 +180,23 @@ export function WeeklyLogClient({ driver, initialLogs }: WeeklyLogClientProps) {
                 )}
               </div>
 
+              {/* Optional Message Field */}
+              <div className="space-y-1.5 pt-1">
+                <label htmlFor="log-message" className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
+                  <span>Message (Optional)</span>
+                  <span className="text-[10px] text-muted-foreground/70">Sent to admin with screenshot</span>
+                </label>
+                <textarea
+                  id="log-message"
+                  rows={3}
+                  className="flex min-h-[60px] w-full rounded-lg border border-border bg-input px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+                  placeholder="Add an optional message or note for the admin..."
+                  value={userMessage}
+                  onChange={(e) => setUserMessage(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
               <Button 
                 type="submit" 
                 className="w-full bg-primary text-white font-semibold shadow-sm hover:glow-primary"
@@ -203,24 +222,32 @@ export function WeeklyLogClient({ driver, initialLogs }: WeeklyLogClientProps) {
           <CardContent className="flex-1 overflow-y-auto max-h-[350px]">
             <div className="space-y-3">
               {logs.map((log) => (
-                <div key={log.id} className="p-3 bg-muted/20 border border-border/40 rounded-xl flex items-center justify-between gap-4 text-xs">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5 font-bold text-foreground">
-                      <Clock className="h-3.5 w-3.5 text-primary" />
-                      {mounted ? new Date(log.uploadedAt).toLocaleDateString() : ""}
+                <div key={log.id} className="p-3 bg-muted/20 border border-border/40 rounded-xl flex flex-col gap-2 text-xs">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-foreground">
+                        <Clock className="h-3.5 w-3.5 text-primary" />
+                        {mounted ? new Date(log.uploadedAt).toLocaleDateString() : ""}
+                      </div>
+                      <span className="text-muted-foreground block text-[10px]">
+                        Uploaded at {mounted ? new Date(log.uploadedAt).toLocaleTimeString() : ""}
+                      </span>
                     </div>
-                    <span className="text-muted-foreground block text-[10px]">
-                      Uploaded at {mounted ? new Date(log.uploadedAt).toLocaleTimeString() : ""}
-                    </span>
+                    <a 
+                      href={log.imageUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="flex items-center gap-1 text-primary hover:underline font-bold shrink-0 text-[11px]"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> View Screenshot
+                    </a>
                   </div>
-                  <a 
-                    href={log.imageUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="flex items-center gap-1 text-primary hover:underline font-bold shrink-0 text-[11px]"
-                  >
-                    <Eye className="h-3.5 w-3.5" /> View Screenshot
-                  </a>
+                  {log.message && (
+                    <div className="bg-card/60 p-2 rounded border border-border/30 text-[11px]">
+                      <span className="font-semibold text-muted-foreground block text-[10px]">Message:</span>
+                      <p className="text-foreground italic whitespace-pre-wrap">{log.message}</p>
+                    </div>
+                  )}
                 </div>
               ))}
               {logs.length === 0 && (

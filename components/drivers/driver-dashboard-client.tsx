@@ -59,6 +59,21 @@ export function DriverDashboardClient({
   });
   const [clickedBookedSlot, setClickedBookedSlot] = useState<any | null>(null);
   const [activeField, setActiveField] = useState<"from" | "to">("from");
+  // Ref for calendar input trigger
+  const calendarInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleOpenCalendar = () => {
+    setShowAllDates(true);
+    if (calendarInputRef.current) {
+      try {
+        if ("showPicker" in HTMLInputElement.prototype) {
+          calendarInputRef.current.showPicker();
+        }
+      } catch {
+        // Fallback to Dialog modal
+      }
+    }
+  };
   const [showSundayPopup, setShowSundayPopup] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<string | null>(null);
@@ -95,11 +110,11 @@ export function DriverDashboardClient({
       setSelectedVehicle(assignedVehicle);
     }
 
-    // Generate dates list (7 days)
+    // Generate initial 7-day window (±3 days around today)
     const list: Date[] = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    for (let i = 0; i < 7; i++) {
+    for (let i = -3; i <= 3; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       list.push(d);
@@ -115,35 +130,19 @@ export function DriverDashboardClient({
     }
   }, [vehicles]);
 
-  // When selectedDate changes (and showAllDates is off), update window to ±3 days
+  // When selectedDate changes, update window to display 3 days before and 3 days after selected date
   useEffect(() => {
-    if (showAllDates) return;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const sel = new Date(selectedDate);
     sel.setHours(0, 0, 0, 0);
-    const isToday = sel.getTime() === today.getTime();
 
-    if (isToday) {
-      // Show 7-day window from today
-      const list: Date[] = [];
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(today);
-        d.setDate(today.getDate() + i);
-        list.push(d);
-      }
-      setWindowDates(list);
-    } else {
-      // Show ±3 days around selected date
-      const window: Date[] = [];
-      for (let i = -3; i <= 3; i++) {
-        const d = new Date(sel);
-        d.setDate(sel.getDate() + i);
-        window.push(d);
-      }
-      setWindowDates(window);
+    const window: Date[] = [];
+    for (let i = -3; i <= 3; i++) {
+      const d = new Date(sel);
+      d.setDate(sel.getDate() + i);
+      window.push(d);
     }
-  }, [selectedDate, showAllDates]);
+    setWindowDates(window);
+  }, [selectedDate]);
 
   // Helper: fetch live bookings for active vehicle
   const fetchLiveBookings = useCallback(async (vehicleId: string) => {
@@ -782,42 +781,43 @@ export function DriverDashboardClient({
                     </span>
                   )}
                   {/* Calendar icon — toggles between 7-day strip and full date picker */}
+                  {/* Calendar icon — opens calendar picker modal */}
                   <div className="relative">
                     <button
                       type="button"
-                      title={showAllDates ? "Back to date strip" : "Browse all dates"}
-                      onClick={() => setShowAllDates((v) => !v)}
+                      title="Open calendar to pick any date"
+                      onClick={handleOpenCalendar}
                       className={cn(
-                        "flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-semibold transition-all cursor-pointer",
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer shadow-xs",
                         showAllDates
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/30"
+                          ? "border-primary bg-primary text-white shadow-sm"
+                          : "border-border bg-card text-foreground hover:border-primary/40 hover:text-primary"
                       )}
                     >
-                      <CalendarDays className="h-3.5 w-3.5" />
-                      {showAllDates ? "Close" : "All Dates"}
+                      <CalendarDays className="h-4 w-4" />
+                      <span>All Dates</span>
                     </button>
-                    {showAllDates && (
-                      <input
-                        type="date"
-                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                        value={mounted ? selectedDate.toISOString().split('T')[0] : ""}
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            // parse as local date
-                            const [y, m, d] = e.target.value.split('-').map(Number);
-                            const picked = new Date(y, m - 1, d);
-                            setSelectedDate(picked);
-                            setClickedBookedSlot(null);
-                            setShowAllDates(false);
-                          }
-                        }}
-                      />
-                    )}
+                    <input
+                      ref={calendarInputRef}
+                      type="date"
+                      className="sr-only"
+                      value={mounted ? selectedDate.toISOString().split('T')[0] : ""}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const [y, m, d] = e.target.value.split('-').map(Number);
+                          const picked = new Date(y, m - 1, d);
+                          setSelectedDate(picked);
+                          setClickedBookedSlot(null);
+                          setShowAllDates(false);
+                        }
+                      }}
+                    />
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none items-center">
+
+              {/* 7-Day Window Strip: Displays 3 days before and 3 days after the selected date */}
+              <div className="flex gap-2 overflow-x-auto pb-2 pt-1 scrollbar-none items-center w-full">
                 {windowDates.map((date, idx) => {
                   const isSelected = date.toDateString() === selectedDate.toDateString();
                   const today = new Date();
@@ -836,17 +836,17 @@ export function DriverDashboardClient({
                         setClickedBookedSlot(null);
                       }}
                       className={cn(
-                        "flex flex-col items-center justify-between p-2.5 min-w-[66px] h-[80px] rounded-xl border transition-all cursor-pointer shrink-0",
+                        "flex flex-col items-center justify-between p-2 sm:p-2.5 min-w-[62px] sm:min-w-[66px] h-[76px] sm:h-[80px] rounded-xl border transition-all cursor-pointer shrink-0 flex-1",
                         isSelected
-                          ? "border-primary bg-primary/10 text-primary font-bold shadow-md glow-primary"
+                          ? "border-primary bg-primary/10 text-primary font-bold shadow-md glow-primary ring-1 ring-primary/40"
                           : isPast
-                          ? "border-border/30 bg-muted/5 text-muted-foreground/40 cursor-not-allowed"
+                          ? "border-border/30 bg-muted/5 text-muted-foreground/40 hover:text-foreground/80 hover:border-border"
                           : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/30"
                       )}
                     >
                       <span className="text-[9px] uppercase font-bold tracking-wider">{monthStr}</span>
-                      <span className="text-lg font-extrabold">{dayNum}</span>
-                      <span className={cn("text-[9px] font-semibold", isToday && !isSelected && "text-primary")}>
+                      <span className="text-lg font-extrabold tracking-tight">{dayNum}</span>
+                      <span className={cn("text-[9px] font-semibold", isToday && !isSelected && "text-primary font-bold")}>
                         {isToday ? "TODAY" : dayName}
                       </span>
                     </button>
@@ -854,6 +854,62 @@ export function DriverDashboardClient({
                 })}
               </div>
             </div>
+
+            {/* Calendar Modal Dialog for All Dates Selection */}
+            {showAllDates && (
+              <Dialog
+                isOpen={showAllDates}
+                onClose={() => setShowAllDates(false)}
+                title="Select Booking Date"
+                className="max-w-md w-full"
+              >
+                <div className="space-y-4 text-foreground p-1">
+                  <p className="text-xs text-muted-foreground">
+                    Select any date from the calendar to view vehicle booking slots for that day. Selecting a date will display <strong>3 days before</strong> and <strong>3 days after</strong> your chosen date.
+                  </p>
+                  <div className="flex flex-col items-center justify-center p-4 bg-muted/20 border border-border/40 rounded-xl space-y-3">
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Calendar Date Picker</label>
+                    <input
+                      type="date"
+                      className="w-full p-3 rounded-xl border border-border bg-input text-foreground font-semibold text-sm focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer"
+                      value={mounted ? selectedDate.toISOString().split('T')[0] : ""}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const [y, m, d] = e.target.value.split('-').map(Number);
+                          const picked = new Date(y, m - 1, d);
+                          setSelectedDate(picked);
+                          setClickedBookedSlot(null);
+                          setShowAllDates(false);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between items-center pt-3 border-t border-border">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedDate(new Date());
+                        setClickedBookedSlot(null);
+                        setShowAllDates(false);
+                      }}
+                      className="text-xs font-semibold"
+                    >
+                      Today
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setShowAllDates(false)}
+                      className="bg-primary text-white text-xs font-semibold"
+                    >
+                      Close Calendar
+                    </Button>
+                  </div>
+                </div>
+              </Dialog>
+            )}
 
             {activeVehicleForDisplay && (
               <>
