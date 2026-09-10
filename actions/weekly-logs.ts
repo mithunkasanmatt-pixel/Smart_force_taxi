@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { v2 as cloudinary } from "cloudinary";
+import { sendWeeklyLogSubmissionEmailToAdmin } from "@/lib/notifications";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -11,9 +12,9 @@ cloudinary.config({
 });
 
 /**
- * Uploads base64 screenshot to Cloudinary and saves database record
+ * Uploads base64 screenshot to Cloudinary and saves database record with optional message
  */
-export async function uploadWeeklyScreenshotAction(driverId: string, base64Image: string) {
+export async function uploadWeeklyScreenshotAction(driverId: string, base64Image: string, message?: string) {
   try {
     if (!driverId) {
       return { error: "Driver ID is required" };
@@ -31,14 +32,34 @@ export async function uploadWeeklyScreenshotAction(driverId: string, base64Image
 
     console.log(`Cloudinary upload successful: ${uploadResult.secure_url}`);
 
+    const trimmedMessage = message && message.trim() ? message.trim() : null;
+
     // Create the DB record
     const weeklyLog = await db.weeklyLog.create({
       data: {
         driverId,
         imageUrl: uploadResult.secure_url,
+        message: trimmedMessage,
         uploadedAt: new Date(),
       },
     });
+
+    // Notify admins via email if driver details are available
+    try {
+      const driver = await db.user.findUnique({
+        where: { id: driverId },
+      });
+      if (driver) {
+        await sendWeeklyLogSubmissionEmailToAdmin(
+          driver.name,
+          driver.employeeId,
+          uploadResult.secure_url,
+          trimmedMessage
+        );
+      }
+    } catch (notifErr) {
+      console.error("Failed to send admin notification email for weekly log:", notifErr);
+    }
 
     revalidatePath("/driver/weekly-log");
     revalidatePath("/admin/weekly-log");

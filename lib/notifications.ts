@@ -686,3 +686,87 @@ export async function sendDailyAvailableVehiclesEmail() {
   console.log(`Daily available vehicles email broadcast completed. Success: ${successCount}, Failed: ${failCount}`);
   return { success: true, sentCount: successCount, failedCount: failCount };
 }
+
+/**
+ * Sends a weekly log submission notification email to admins
+ */
+export async function sendWeeklyLogSubmissionEmailToAdmin(
+  driverName: string,
+  employeeId: string,
+  imageUrl: string,
+  message?: string | null
+) {
+  try {
+    const { db } = await import("@/lib/db");
+    
+    // Fetch all admins (SUPER_ADMIN and TRANSPORT_MANAGER)
+    const admins = await db.user.findMany({
+      where: {
+        role: {
+          in: ["SUPER_ADMIN", "TRANSPORT_MANAGER"],
+        },
+      },
+    });
+
+    if (admins.length === 0) {
+      console.log("No admins found to send weekly log notification.");
+      return { success: true, message: "No admins found." };
+    }
+
+    const from = process.env.SMTP_FROM || `"Smart Force Taxi" <noreply@smartforcetaxi.com>`;
+    const subject = `New Weekly Log Submitted by ${driverName} (${employeeId})`;
+
+    const messageContent = message && message.trim() ? message.trim() : "(No message included)";
+
+    const text = `Hello Admin,
+
+Driver ${driverName} (Employee ID: ${employeeId}) has uploaded a new weekly work screenshot log.
+
+Message from Driver:
+${messageContent}
+
+View Screenshot:
+${imageUrl}
+
+Best regards,
+Smart Force Taxi Operations System`;
+
+    const html = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; border-radius: 8px;">
+      <h2 style="color: #f59e0b; margin-top: 0;">Weekly Log Submission</h2>
+      <p>Driver <strong>${driverName}</strong> (ID: <code>${employeeId}</code>) has submitted a weekly work screenshot.</p>
+      
+      <div style="background-color: #f4f4f5; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e4e4e7;">
+        <h3 style="margin-top: 0; font-size: 14px; color: #27272a;">Driver Message:</h3>
+        <p style="font-style: italic; color: #3f3f46; margin-bottom: 0;">"${messageContent}"</p>
+      </div>
+
+      <p><a href="${imageUrl}" target="_blank" style="display: inline-block; background-color: #f59e0b; color: #ffffff; padding: 10px 18px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">View Screenshot Log</a></p>
+
+      <p style="font-size: 12px; color: #a1a1aa; margin-top: 30px; border-top: 1px solid #e4e4e7; padding-top: 15px;">
+        This is an automated operational notification. You can review all driver logs in the Admin Dashboard under Weekly Logs.
+      </p>
+    </div>`;
+
+    for (const admin of admins) {
+      if (!admin.email) continue;
+      try {
+        await transporter.sendMail({
+          from,
+          to: admin.email,
+          subject,
+          text,
+          html,
+        });
+        console.log(`Weekly log notification email sent to admin: ${admin.email}`);
+      } catch (err) {
+        console.error(`Failed to send weekly log notification email to admin ${admin.email}:`, err);
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error in sendWeeklyLogSubmissionEmailToAdmin:", error);
+    return { error };
+  }
+}
+
