@@ -59,20 +59,8 @@ export function DriverDashboardClient({
   });
   const [clickedBookedSlot, setClickedBookedSlot] = useState<any | null>(null);
   const [activeField, setActiveField] = useState<"from" | "to">("from");
-  // Ref for calendar input trigger
-  const calendarInputRef = React.useRef<HTMLInputElement>(null);
-
   const handleOpenCalendar = () => {
     setShowAllDates(true);
-    if (calendarInputRef.current) {
-      try {
-        if ("showPicker" in HTMLInputElement.prototype) {
-          calendarInputRef.current.showPicker();
-        }
-      } catch {
-        // Fallback to Dialog modal
-      }
-    }
   };
   const [showSundayPopup, setShowSundayPopup] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
@@ -797,21 +785,6 @@ export function DriverDashboardClient({
                       <CalendarDays className="h-4 w-4" />
                       <span>All Dates</span>
                     </button>
-                    <input
-                      ref={calendarInputRef}
-                      type="date"
-                      className="sr-only"
-                      value={mounted ? selectedDate.toISOString().split('T')[0] : ""}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          const [y, m, d] = e.target.value.split('-').map(Number);
-                          const picked = new Date(y, m - 1, d);
-                          setSelectedDate(picked);
-                          setClickedBookedSlot(null);
-                          setShowAllDates(false);
-                        }
-                      }}
-                    />
                   </div>
                 </div>
               </div>
@@ -873,6 +846,15 @@ export function DriverDashboardClient({
                       type="date"
                       className="w-full p-3 rounded-xl border border-border bg-input text-foreground font-semibold text-sm focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer"
                       value={mounted ? selectedDate.toISOString().split('T')[0] : ""}
+                      onClick={(e) => {
+                        try {
+                          if ("showPicker" in HTMLInputElement.prototype) {
+                            e.currentTarget.showPicker();
+                          }
+                        } catch {
+                          // ignore
+                        }
+                      }}
                       onChange={(e) => {
                         if (e.target.value) {
                           const [y, m, d] = e.target.value.split('-').map(Number);
