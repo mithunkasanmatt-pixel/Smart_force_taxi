@@ -860,14 +860,23 @@ Smart Force Taxi Fleet Safety & Operations`;
 }
 
 /**
- * Scans all drivers and dispatches website & email notifications for licenses expiring within 30 days
+ * Scans all drivers and dispatches website & email notifications for licenses expiring within 30 days.
+ * Daily notifications are sent twice: at 5:00 AM (morning slot) and at 5:00 PM (evening slot).
+ * Notifications are sent ONLY during the one-month period before the license expiry date.
  */
-export async function checkAndNotifyLicenseExpiry(specificDriverId?: string) {
+export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, forceSend: boolean = false) {
   try {
     const { db } = await import("@/lib/db");
     const now = new Date();
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(now.getDate() + 30);
+
+    // Determine current day start (00:00:00) and noon (12:00:00) for morning (5:00 AM) vs evening (5:00 PM) slots
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayNoon = new Date(now);
+    todayNoon.setHours(12, 0, 0, 0);
+
+    const isMorningSlot = now.getHours() < 12; // 00:00 - 11:59 (5:00 AM slot)
 
     const whereCondition: any = {
       role: "DRIVER",
@@ -893,22 +902,33 @@ export async function checkAndNotifyLicenseExpiry(specificDriverId?: string) {
       const diffTime = expiryDate.getTime() - now.getTime();
       const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-      // Check if license is expiring within 30 days or already expired
-      if (daysRemaining <= 30) {
-        // Prevent duplicate notification spam within 24 hours unless manually triggered for specific driver
-        if (!specificDriverId && driver.lastExpiryNotifiedAt) {
-          const lastNotified = new Date(driver.lastExpiryNotifiedAt);
-          const hoursSinceLastNotification = (now.getTime() - lastNotified.getTime()) / (1000 * 60 * 60);
-          if (hoursSinceLastNotification < 24) {
-            continue;
+      // Notifications should be sent ONLY during the one-month period before the license expiry date (0 to 30 days remaining)
+      if (daysRemaining >= 0 && daysRemaining <= 30) {
+        // Prevent duplicate notification for the same slot (5:00 AM or 5:00 PM) unless forceSend is true
+        if (!forceSend && !specificDriverId) {
+          const slotNotificationCount = await db.notification.count({
+            where: {
+              userId: driver.id,
+              type: "LICENSE_EXPIRY",
+              createdAt: isMorningSlot
+                ? { gte: todayStart, lt: todayNoon }
+                : { gte: todayNoon },
+            },
+          });
+
+          if (slotNotificationCount > 0) {
+            continue; // Already notified during this slot today
           }
         }
 
-        const isExpired = daysRemaining < 0;
-        const title = isExpired ? "Taxi License Expired" : "Taxi License Expiring Soon";
-        const message = isExpired
-          ? `Your taxi license expired on ${expiryDate.toLocaleDateString()}. Please renew it immediately.`
-          : `Your taxi license will expire in ${daysRemaining} day(s) on ${expiryDate.toLocaleDateString()}. Please renew it promptly.`;
+        const formattedExpiryDate = expiryDate.toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+
+        const title = "Taxi License Expiring Soon";
+        const message = `Your taxi license (No. ${driver.licenseNumber || "N/A"}) will expire in ${daysRemaining} day(s) on ${formattedExpiryDate}. Please renew it promptly to prevent disruption to your driving duties.`;
 
         // 1. Create In-Website Notification
         await db.notification.create({
