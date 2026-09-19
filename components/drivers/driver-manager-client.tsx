@@ -16,7 +16,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { registerUser } from "@/actions/register";
-import { Mail, Lock, CreditCard, Calendar, Briefcase, ShieldAlert, AlertCircle, Loader2, User as UserIcon, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, CreditCard, Calendar, Briefcase, ShieldAlert, AlertCircle, Loader2, User as UserIcon, Eye, EyeOff, Upload } from "lucide-react";
 import { isWeakPassword } from "@/lib/auth-utils";
 
 const passwordValidation = z.string()
@@ -30,12 +30,17 @@ const passwordValidation = z.string()
   });
 
 const registerSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
+  name: z.string().min(2, "Full Name is required"),
+  ssn: z.string().min(5, "Social Security Number (SSN) is required"),
+  homeAddress: z.string().min(5, "Home Address is required"),
   email: z.string().email("Please enter a valid email address"),
+  phone: z.string().min(8, "Phone number is required"),
   password: passwordValidation,
   confirmPassword: z.string().min(1, "Please confirm your password"),
   licenseNumber: z.string().min(5, "License number is required"),
+  licenseIssueDate: z.string().min(1, "License issue date is required"),
   licenseExpiry: z.string().min(1, "License expiry date is required"),
+  profilePicture: z.string().optional(),
   experience: z.number().min(0, "Experience must be a positive number"),
   emergencyContact: z.string().min(10, "Emergency contact must be at least 10 digits"),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -60,6 +65,8 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
   const [allocationVehicleId, setAllocationVehicleId] = useState("");
   const [confirmReassign, setConfirmReassign] = useState(false);
   const [replaceDriverId, setReplaceDriverId] = useState<string>("");
+  const [sendingNotifId, setSendingNotifId] = useState<string | null>(null);
+  const [notifSuccess, setNotifSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     setReplaceDriverId("");
@@ -84,25 +91,85 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
   const [isRegisterLoading, setIsRegisterLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null);
+  const [profileImageSizeKb, setProfileImageSizeKb] = useState<number | null>(null);
+  const [profileImageError, setProfileImageError] = useState<string | null>(null);
+
+  // Helper to compress and resize images up to 500 KB limit
+  const compressImageFile = (file: File): Promise<{ dataUrl: string; sizeKb: number }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX_WIDTH = 600;
+          const MAX_HEIGHT = 600;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height = Math.round((height * MAX_WIDTH) / width);
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width = Math.round((width * MAX_HEIGHT) / height);
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+            // Calculate base64 size in KB
+            const sizeKb = Math.round((dataUrl.length * 3) / 4 / 1024);
+            resolve({ dataUrl, sizeKb });
+          } else {
+            const dataUrl = event.target?.result as string;
+            const sizeKb = Math.round((dataUrl.length * 3) / 4 / 1024);
+            resolve({ dataUrl, sizeKb });
+          }
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
+
 
   const {
     register: registerField,
     handleSubmit: handleRegisterSubmit,
+    setValue,
     formState: { errors: registerErrors },
     reset: resetRegisterForm,
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
       name: "",
+      ssn: "",
+      homeAddress: "",
       email: "",
+      phone: "",
       password: "",
       confirmPassword: "",
       licenseNumber: "",
+      licenseIssueDate: "",
       licenseExpiry: "",
+      profilePicture: "",
       experience: 0,
       emergencyContact: "",
     },
   });
+
 
   const onRegisterSubmit = async (data: RegisterFormValues) => {
     setIsRegisterLoading(true);
@@ -111,10 +178,15 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
     try {
       const result = await registerUser({
         name: data.name,
+        ssn: data.ssn,
+        homeAddress: data.homeAddress,
         email: data.email,
+        phone: data.phone,
         password: data.password,
         licenseNumber: data.licenseNumber,
+        licenseIssueDate: data.licenseIssueDate,
         licenseExpiry: data.licenseExpiry,
+        profilePicture: data.profilePicture,
         experience: data.experience,
         emergencyContact: data.emergencyContact,
       });
@@ -137,6 +209,26 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
       setIsRegisterLoading(false);
     }
   };
+
+  const handleSendExpiryAlert = async (driverId: string) => {
+    setSendingNotifId(driverId);
+    setNotifSuccess(null);
+    try {
+      const res = await fetch(`/api/notifications/check-expiry?driverId=${driverId}`);
+      if (res.ok) {
+        setNotifSuccess("License expiry notification (email & website) dispatched successfully!");
+        setTimeout(() => setNotifSuccess(null), 4000);
+      } else {
+        alert("Failed to send notification alert.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error triggering notification alert.");
+    } finally {
+      setSendingNotifId(null);
+    }
+  };
+
 
   const [bookingForm, setBookingForm] = useState({
     vehicleId: "",
@@ -595,20 +687,135 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
         <div className="lg:col-span-8 space-y-6">
           {activeDriver ? (
             <div className="space-y-6">
-              {/* Driver Summary Banner */}
-              <div className="p-6 border border-border bg-card rounded-xl space-y-4 glass">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="space-y-1">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Selected Driver</span>
-                    <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
-                      <UserCheck className="h-5.5 w-5.5 text-primary" /> {activeDriver.name}
-                    </h3>
-                    <p className="text-xs text-muted-foreground font-mono">{activeDriver.employeeId} &bull; {activeDriver.email}</p>
+              {/* Driver Summary & Profile Card */}
+              <div className="p-6 border border-border bg-card rounded-xl space-y-6 glass">
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+                  {/* Left Profile Avatar & Basic Info */}
+                  <div className="flex items-start gap-4">
+                    {activeDriver.profilePicture ? (
+                      <img
+                        src={activeDriver.profilePicture}
+                        alt={activeDriver.name}
+                        className="w-16 h-16 rounded-full object-cover border-2 border-amber-500 shadow-md shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center text-amber-500 font-bold text-xl shrink-0">
+                        {activeDriver.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Driver Profile</span>
+                        <Badge variant="outline" className="text-[10px] font-mono bg-muted">
+                          {activeDriver.employeeId}
+                        </Badge>
+                      </div>
+                      <h3 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                        {activeDriver.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">{activeDriver.email} &bull; {activeDriver.phone || "No Phone Registered"}</p>
+                    </div>
                   </div>
-                  <Button onClick={handleOpenBooking} className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold shrink-0">
-                    <Plus className="h-4.5 w-4.5 mr-2" /> Book Slot on Behalf
+
+                  {/* Right Action Buttons */}
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <Button onClick={handleOpenBooking} className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs">
+                      <Plus className="h-4 w-4 mr-1.5" /> Book Slot on Behalf
+                    </Button>
+                    <a href="/admin/accounting" className="inline-flex items-center justify-center rounded-md text-xs font-semibold ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3">
+                      <CreditCard className="h-4 w-4 mr-1.5 text-emerald-500" /> Salary Details
+                    </a>
+                  </div>
+                </div>
+
+                {/* Notification Alert Message if sent */}
+                {notifSuccess && (
+                  <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-xs text-green-600 dark:text-green-400 font-medium">
+                    {notifSuccess}
+                  </div>
+                )}
+
+                {/* Mandatory Driver Profile Details Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 p-4 rounded-xl bg-muted/20 border border-border/60 text-xs">
+                  <div>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase block">Full Name</span>
+                    <span className="font-bold text-foreground text-sm">{activeDriver.name}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase block">Social Security Number (SSN)</span>
+                    <span className="font-mono font-bold text-foreground">{activeDriver.ssn || "N/A"}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase block">Home Address</span>
+                    <span className="font-medium text-foreground">{activeDriver.homeAddress || "N/A"}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase block">Phone Number</span>
+                    <span className="font-medium text-foreground">{activeDriver.phone || "N/A"}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase block">Taxi License Issue Date</span>
+                    <span className="font-medium text-foreground">
+                      {activeDriver.licenseIssueDate
+                        ? new Date(activeDriver.licenseIssueDate).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+                        : "N/A"}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase block">Taxi License Expiry Date</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="font-bold text-foreground">
+                        {activeDriver.licenseExpiry
+                          ? new Date(activeDriver.licenseExpiry).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+                          : "N/A"}
+                      </span>
+                      {activeDriver.licenseExpiry && (() => {
+                        const days = Math.ceil((new Date(activeDriver.licenseExpiry).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
+                        if (days < 0) {
+                          return <Badge className="bg-red-500/20 text-red-500 hover:bg-red-500/20 border-red-500/30 text-[9px]">Expired</Badge>;
+                        } else if (days <= 30) {
+                          return <Badge className="bg-amber-500/20 text-amber-500 hover:bg-amber-500/20 border-amber-500/30 text-[9px]">{days}d left</Badge>;
+                        } else {
+                          return <Badge className="bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20 border-emerald-500/30 text-[9px]">Valid</Badge>;
+                        }
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expiry Notification Action Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="h-5 w-5 text-amber-500 shrink-0" />
+                    <div>
+                      <span className="text-xs font-bold text-foreground block">Taxi License Expiry Notification</span>
+                      <span className="text-[11px] text-muted-foreground">Send instant automated email & website notification alert to driver.</span>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSendExpiryAlert(activeDriver.id)}
+                    disabled={sendingNotifId === activeDriver.id || !activeDriver.licenseExpiry}
+                    className="border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 text-xs font-bold shrink-0 cursor-pointer"
+                  >
+                    {sendingNotifId === activeDriver.id ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="mr-1.5 h-3.5 w-3.5" /> Dispatch Expiry Alert
+                      </>
+                    )}
                   </Button>
                 </div>
+
 
                 {/* Permanent Vehicle Allocation Section */}
                 <div className="border-t border-border/30 pt-4 mt-2 space-y-2">
@@ -1139,11 +1346,16 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
           setIsRegisterOpen(false);
           setRegisterSuccess(false);
           setRegisterError(null);
+          setProfileImagePreview(null);
+          setProfileImageSizeKb(null);
+          setProfileImageError(null);
           resetRegisterForm();
         }} 
         title="Register Driver"
         className="max-w-xl"
       >
+
+
         {registerSuccess ? (
           <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-6 text-center text-green-600 dark:text-green-400 space-y-2">
             <h3 className="text-lg font-semibold">Registration Successful!</h3>
@@ -1257,7 +1469,70 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                 )}
               </div>
 
-              {/* License Number */}
+              {/* Social Security Number (SSN) */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-ssn">
+                  Social Security Number (SSN)
+                </label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-ssn"
+                    type="text"
+                    placeholder="XXX-XX-XXXX"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("ssn")}
+                  />
+                </div>
+                {registerErrors.ssn && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.ssn.message}</p>
+                )}
+              </div>
+
+              {/* Home Address */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-homeAddress">
+                  Home Address
+                </label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-homeAddress"
+                    type="text"
+                    placeholder="123 Main St, City, State"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("homeAddress")}
+                  />
+                </div>
+                {registerErrors.homeAddress && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.homeAddress.message}</p>
+                )}
+              </div>
+
+              {/* Phone Number */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-phone">
+                  Phone Number
+                </label>
+                <div className="relative">
+                  <ShieldAlert className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-phone"
+                    type="tel"
+                    placeholder="+1 (555) 019-2834"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("phone")}
+                  />
+                </div>
+                {registerErrors.phone && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.phone.message}</p>
+                )}
+              </div>
+
+              {/* Driving License Number */}
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-licenseNumber">
                   Driving License Number
@@ -1278,10 +1553,30 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                 )}
               </div>
 
+              {/* Taxi License Issue Date */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-licenseIssueDate">
+                  Taxi License Issue Date
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reg-licenseIssueDate"
+                    type="date"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isRegisterLoading}
+                    {...registerField("licenseIssueDate")}
+                  />
+                </div>
+                {registerErrors.licenseIssueDate && (
+                  <p className="text-xs text-red-500 font-medium">{registerErrors.licenseIssueDate.message}</p>
+                )}
+              </div>
+
               {/* License Expiry */}
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-muted-foreground" htmlFor="reg-licenseExpiry">
-                  License Expiry Date
+                  Taxi License Expiry Date
                 </label>
                 <div className="relative">
                   <Calendar className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -1297,6 +1592,103 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                   <p className="text-xs text-red-500 font-medium">{registerErrors.licenseExpiry.message}</p>
                 )}
               </div>
+
+              {/* Profile Image Upload */}
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground block">
+                  Driver Profile Image (Max 500 KB)
+                </label>
+                <div className="flex items-start gap-4 p-3 rounded-xl bg-muted/20 border border-border/80">
+                  {profileImagePreview ? (
+                    <img
+                      src={profileImagePreview}
+                      alt="Driver Profile Preview"
+                      className="w-16 h-16 rounded-full object-cover border-2 border-amber-500 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-amber-500/10 border-2 border-dashed border-amber-500/40 flex items-center justify-center text-amber-500 shrink-0">
+                      <UserIcon className="h-7 w-7" />
+                    </div>
+                  )}
+                  <div className="flex-1 space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label
+                        htmlFor="profile-picture-upload"
+                        className="cursor-pointer inline-flex items-center justify-center rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-zinc-950 px-3 py-2 transition-colors shadow-sm"
+                      >
+                        <Upload className="h-3.5 w-3.5 mr-1.5" />
+                        {profileImagePreview ? "Change Photo" : "Upload Profile Image"}
+                      </label>
+                      {profileImagePreview && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setProfileImagePreview(null);
+                            setProfileImageSizeKb(null);
+                            setProfileImageError(null);
+                            setValue("profilePicture", "");
+                          }}
+                          className="text-xs text-red-500 hover:bg-red-500/10 h-8"
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Status & Size Info Badges */}
+                    {profileImageError ? (
+                      <p className="text-xs text-red-500 font-bold bg-red-500/10 border border-red-500/20 p-2 rounded-lg">
+                        ⚠️ {profileImageError}
+                      </p>
+                    ) : profileImageSizeKb !== null ? (
+                      <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                        <span>Compressed Size: {profileImageSizeKb} KB (Within 500 KB limit)</span>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground">
+                        PNG, JPG or WebP images up to <strong>500 KB</strong>. Images are automatically optimized.
+                      </p>
+                    )}
+
+                    <input
+                      id="profile-picture-upload"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={isRegisterLoading}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        setProfileImageError(null);
+
+                        try {
+                          const { dataUrl, sizeKb } = await compressImageFile(file);
+
+                          if (sizeKb > 500) {
+                            setProfileImageError(`Image size (${sizeKb} KB) exceeds the 500 KB limit. Please choose a smaller photo.`);
+                            setProfileImagePreview(null);
+                            setProfileImageSizeKb(null);
+                            setValue("profilePicture", "");
+                          } else {
+                            setProfileImagePreview(dataUrl);
+                            setProfileImageSizeKb(sizeKb);
+                            setValue("profilePicture", dataUrl);
+                          }
+                        } catch (err) {
+                          console.error("Image processing error:", err);
+                          setProfileImageError("Failed to process image file. Please try a different image.");
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+
 
               {/* Experience */}
               <div className="space-y-1">
@@ -1340,6 +1732,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                 )}
               </div>
             </div>
+
 
             <Button type="submit" className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold" disabled={isRegisterLoading}>
               {isRegisterLoading ? (

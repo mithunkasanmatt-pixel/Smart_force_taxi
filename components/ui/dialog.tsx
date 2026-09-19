@@ -50,7 +50,7 @@ export function Dialog({ isOpen, onClose, title, children, className }: DialogPr
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto pr-1">
+        <div className="max-h-[80vh] overflow-y-auto pr-1 scrollbar-thin">
           {children}
         </div>
       </div>

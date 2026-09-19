@@ -14,6 +14,8 @@ import {
   ChevronRight,
   Menu,
   Calendar,
+  Receipt,
+  Euro,
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/button";
@@ -43,6 +45,8 @@ export function Sidebar({ role }: SidebarProps) {
     { href: "/admin", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/admin/vehicles", label: t("vehicles"), icon: Truck },
     { href: "/admin/drivers", label: t("drivers"), icon: Users },
+    { href: "/admin/accounting", label: "Salary & Accounting", icon: Euro },
+    { href: "/admin/earnings", label: "Driver Earnings", icon: Receipt },
     { href: "/admin/bookings", label: "Booking History", icon: Calendar },
     { href: "/admin/schedule", label: t("vehicle_schedule"), icon: Calendar },
     { href: "/admin/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
@@ -52,6 +56,7 @@ export function Sidebar({ role }: SidebarProps) {
     { href: "/driver", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/driver/available-vehicles", label: t("vehicles"), icon: Truck },
     { href: "/driver/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
+    { href: "/driver/earnings", label: "Earnings & Tax", icon: Receipt },
   ];
 
   const links = role === "DRIVER" ? driverLinks : adminLinks;

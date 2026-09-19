@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useSearchParams, usePathname } from "next/navigation";
 
-export type DriverTab = "dashboard" | "vehicles" | "weekly-log";
+export type DriverTab = "dashboard" | "vehicles" | "weekly-log" | "earnings" | "profile";
 
 interface DriverTabContextProps {
   activeTab: DriverTab;
@@ -22,6 +22,12 @@ export function DriverTabProvider({ children }: { children: React.ReactNode }) {
     }
     if (path === "/driver/weekly-log" || params.get("tab") === "weekly-log") {
       return "weekly-log";
+    }
+    if (path === "/driver/earnings" || params.get("tab") === "earnings") {
+      return "earnings";
+    }
+    if (path === "/driver/profile" || params.get("tab") === "profile") {
+      return "profile";
     }
     return "dashboard";
   };
@@ -42,11 +48,16 @@ export function DriverTabProvider({ children }: { children: React.ReactNode }) {
       targetPath = "/driver/available-vehicles";
     } else if (tab === "weekly-log") {
       targetPath = "/driver/weekly-log";
+    } else if (tab === "earnings") {
+      targetPath = "/driver/earnings";
+    } else if (tab === "profile") {
+      targetPath = "/driver/profile";
     }
 
     // Instantly update browser address bar without server fetches
     window.history.pushState(null, "", targetPath);
   };
+
 
   return (
     <DriverTabContext.Provider value={{ activeTab, setActiveTab }}>

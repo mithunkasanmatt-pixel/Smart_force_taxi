@@ -770,3 +770,183 @@ Smart Force Taxi Operations System`;
   }
 }
 
+/**
+ * Sends taxi license expiry notification email to a driver
+ */
+export async function sendLicenseExpiryEmail(
+  email: string,
+  name: string,
+  licenseNumber: string,
+  expiryDate: Date,
+  daysRemaining: number
+) {
+  const from = process.env.SMTP_FROM || `"Smart Force Taxi" <noreply@smartforcetaxi.com>`;
+  const formattedDate = expiryDate.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const isExpired = daysRemaining < 0;
+  const statusTitle = isExpired ? "Taxi License Expired Alert" : "Taxi License Expiry Notice";
+  const subject = `[URGENT] ${statusTitle} - Smart Force Taxi`;
+
+  const statusMessage = isExpired
+    ? `Your taxi license (No. ${licenseNumber || "N/A"}) expired ${Math.abs(daysRemaining)} days ago on ${formattedDate}.`
+    : `Your taxi license (No. ${licenseNumber || "N/A"}) is set to expire in ${daysRemaining} day(s) on ${formattedDate}.`;
+
+  const actionInstruction = isExpired
+    ? "Please renew your taxi license immediately and submit updated proof to the management team. You cannot operate fleet vehicles with an expired license."
+    : "Please take immediate steps to renew your license before the expiration date to avoid service disruption.";
+
+  const text = `Hello ${name},
+
+${statusTitle}
+
+${statusMessage}
+
+${actionInstruction}
+
+Best regards,
+Smart Force Taxi Fleet Safety & Operations`;
+
+  const html = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; border-radius: 8px;">
+    <div style="background-color: ${isExpired ? "#ef4444" : "#f59e0b"}; padding: 15px; border-radius: 6px; text-align: center; color: white;">
+      <h2 style="margin: 0; font-size: 20px;">${statusTitle}</h2>
+    </div>
+    <div style="padding: 20px 0;">
+      <p style="font-size: 16px; color: #18181b;">Hello <strong>${name}</strong>,</p>
+      <p style="font-size: 15px; color: #3f3f46; line-height: 1.5;">${statusMessage}</p>
+      
+      <div style="background-color: #f4f4f5; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${isExpired ? "#ef4444" : "#f59e0b"};">
+        <h4 style="margin: 0 0 8px 0; color: #18181b;">Action Required:</h4>
+        <p style="margin: 0; color: #52525b; font-size: 14px;">${actionInstruction}</p>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #71717a;">License Number:</td>
+          <td style="padding: 6px 0; font-family: monospace;">${licenseNumber || "N/A"}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #71717a;">Expiry Date:</td>
+          <td style="padding: 6px 0; font-weight: bold; color: ${isExpired ? "#ef4444" : "#d97706"};">${formattedDate}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; color: #71717a;">Status:</td>
+          <td style="padding: 6px 0; font-weight: bold;">${isExpired ? "EXPIRED" : `${daysRemaining} Days Remaining`}</td>
+        </tr>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: #a1a1aa; margin-top: 30px; border-top: 1px solid #e4e4e7; padding-top: 15px;">
+      This is an automated fleet management notification. If you have already renewed your license, please contact your Fleet Manager.
+    </p>
+  </div>`;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to: email,
+      subject,
+      text,
+      html,
+    });
+    console.log(`License expiry email sent successfully to: ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to send license expiry email:", error);
+    return { error };
+  }
+}
+
+/**
+ * Scans all drivers and dispatches website & email notifications for licenses expiring within 30 days
+ */
+export async function checkAndNotifyLicenseExpiry(specificDriverId?: string) {
+  try {
+    const { db } = await import("@/lib/db");
+    const now = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(now.getDate() + 30);
+
+    const whereCondition: any = {
+      role: "DRIVER",
+      licenseExpiry: {
+        not: null,
+      },
+    };
+
+    if (specificDriverId) {
+      whereCondition.id = specificDriverId;
+    }
+
+    const drivers = await db.user.findMany({
+      where: whereCondition,
+    });
+
+    let notifiedCount = 0;
+
+    for (const driver of drivers) {
+      if (!driver.licenseExpiry) continue;
+
+      const expiryDate = new Date(driver.licenseExpiry);
+      const diffTime = expiryDate.getTime() - now.getTime();
+      const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      // Check if license is expiring within 30 days or already expired
+      if (daysRemaining <= 30) {
+        // Prevent duplicate notification spam within 24 hours unless manually triggered for specific driver
+        if (!specificDriverId && driver.lastExpiryNotifiedAt) {
+          const lastNotified = new Date(driver.lastExpiryNotifiedAt);
+          const hoursSinceLastNotification = (now.getTime() - lastNotified.getTime()) / (1000 * 60 * 60);
+          if (hoursSinceLastNotification < 24) {
+            continue;
+          }
+        }
+
+        const isExpired = daysRemaining < 0;
+        const title = isExpired ? "Taxi License Expired" : "Taxi License Expiring Soon";
+        const message = isExpired
+          ? `Your taxi license expired on ${expiryDate.toLocaleDateString()}. Please renew it immediately.`
+          : `Your taxi license will expire in ${daysRemaining} day(s) on ${expiryDate.toLocaleDateString()}. Please renew it promptly.`;
+
+        // 1. Create In-Website Notification
+        await db.notification.create({
+          data: {
+            userId: driver.id,
+            title,
+            message,
+            type: "LICENSE_EXPIRY",
+            isRead: false,
+          },
+        });
+
+        // 2. Send Email Notification
+        if (driver.email) {
+          await sendLicenseExpiryEmail(
+            driver.email,
+            driver.name,
+            driver.licenseNumber || "",
+            expiryDate,
+            daysRemaining
+          );
+        }
+
+        // 3. Update lastExpiryNotifiedAt timestamp
+        await db.user.update({
+          where: { id: driver.id },
+          data: { lastExpiryNotifiedAt: now },
+        });
+
+        notifiedCount++;
+      }
+    }
+
+    return { success: true, notifiedCount };
+  } catch (error: any) {
+    console.error("Error running checkAndNotifyLicenseExpiry:", error);
+    return { error: error.message || "Failed to check license expiry notifications" };
+  }
+}
+
+
