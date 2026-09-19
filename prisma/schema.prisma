@@ -57,9 +57,19 @@ model User {
   shiftEndTime      String?        // "06:00 PM"
   shiftDuration     String?        // "12 Hours"
   
+  ssn               String?
+  homeAddress       String?
+  licenseIssueDate  DateTime?
+  profilePicture    String?
+  lastExpiryNotifiedAt DateTime?
+  
   // Relations
   trips             Trip[]         @relation("DriverTrips")
   weeklyLogs        WeeklyLog[]
+  earnings          DriverEarning[]
+  notifications     Notification[]
+  salaryDetails     DriverSalary?
+  payrollRecords    PayrollRecord[]
   assignedVehicleId String?
   assignedVehicle   Vehicle?       @relation("DriverVehicle", fields: [assignedVehicleId], references: [id], onDelete: SetNull)
   
@@ -72,6 +82,66 @@ model User {
   @@index([role])
   @@index([assignedVehicleId])
 }
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("LICENSE_EXPIRY")
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model DriverSalary {
+  id              String   @id @default(uuid())
+  driverId        String   @unique
+  driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  baseSalary      Float    @default(0.0)
+  payType         String   @default("MONTHLY") // MONTHLY, WEEKLY, HOURLY, PER_TRIP
+  hourlyRate      Float?
+  bankName        String?
+  accountNumber   String?
+  routingNumber   String?
+  allowances      Float    @default(0.0)
+  deductions      Float    @default(0.0)
+  taxRate         Float    @default(13.5)
+  notes           String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([driverId])
+}
+
+model PayrollRecord {
+  id              String   @id @default(uuid())
+  driverId        String
+  driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  month           Int
+  year            Int
+  baseAmount      Float
+  allowances      Float
+  deductions      Float
+  taxAmount       Float
+  netSalary       Float
+  paymentStatus   String   @default("PENDING") // PENDING, PAID, PROCESSING
+  paymentDate     DateTime?
+  referenceNumber String?
+  notes           String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([driverId])
+  @@index([month, year])
+}
+
 
 model Vehicle {
   id                 String         @id @default(uuid())
@@ -144,5 +214,28 @@ model WeeklyLog {
   updatedAt  DateTime @updatedAt
 
   @@index([driverId])
+}
+
+model DriverEarning {
+  id               String   @id @default(uuid())
+  driverId         String
+  driver           User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  date             DateTime @default(now())
+  totalEarnings    Float
+  taxRate          Float    @default(13.5)
+  taxAmount        Float
+  remainingAmount  Float
+  driverShareRate  Float    @default(45)
+  driverShare      Float
+  companyShareRate Float    @default(55)
+  companyShare     Float
+  notes            String?
+  status           String   @default("SUBMITTED")
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([driverId])
+  @@index([date])
 }
 

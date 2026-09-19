@@ -291,6 +291,18 @@ export async function cancelUserBookingAction(tripId: string) {
       return { error: "This booking is already cancelled." };
     }
 
+    // 12-hour cancellation restriction for driver self-service cancellation
+    const now = new Date();
+    const startTime = new Date(trip.startTime);
+    const diffHours = (startTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    if (diffHours < 12) {
+      return {
+        error: "Direct cancellation is unavailable because the booking start time is within 12 hours. Please contact Support to request cancellation.",
+        requiresSupport: true,
+      };
+    }
+
     // Update trip status to CANCELLED
     await db.trip.update({
       where: { id: tripId },
@@ -298,6 +310,7 @@ export async function cancelUserBookingAction(tripId: string) {
         status: "CANCELLED",
       },
     });
+
 
     // Query all driver users to broadcast email notification
     const drivers = await db.user.findMany({

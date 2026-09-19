@@ -8,10 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { bookCarAction, cancelBookingAction, cancelUserBookingAction } from "@/actions/driver-trips";
-import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2 } from "lucide-react";
+import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2, Headphones, PhoneCall, Mail, ShieldAlert } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useTranslation } from "@/components/layout/language-provider";
 import { useRouter } from "next/navigation";
+
 
 interface DriverDashboardClientProps {
   driver: User;
@@ -65,8 +66,10 @@ export function DriverDashboardClient({
   const [showSundayPopup, setShowSundayPopup] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<string | null>(null);
+  const [supportBooking, setSupportBooking] = useState<any | null>(null);
 
   const [hoveredImage, setHoveredImage] = useState<string | null>(null);
+
   const [activePreviewImage, setActivePreviewImage] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
@@ -1122,71 +1125,179 @@ export function DriverDashboardClient({
           <CardDescription>{t("bookings_schedule_desc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 flex-1">
-          <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-80 overflow-y-auto pr-1 divide-y divide-border/40">
             {bookings
               .filter((b) => b.driverId === driver.id && b.status !== "COMPLETED" && b.status !== "CANCELLED")
-              .map((b) => (
-                <div key={b.id} className="p-3 bg-muted/30 border border-border/40 rounded-lg space-y-2 text-xs">
-                  <div className="flex justify-between font-semibold">
-                    <span className="font-mono text-primary font-bold">{b.tripNumber}</span>
-                    <Badge variant="warning">{b.status}</Badge>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {(b.vehicle as any)?.imageUrl ? (
-                      <img 
-                        src={(b.vehicle as any).imageUrl} 
-                        alt={b.vehicle?.name} 
-                        className="w-16 h-16 rounded object-cover border border-border shrink-0 cursor-zoom-in" 
-                        loading="lazy"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActivePreviewImage((b.vehicle as any).imageUrl);
-                        }}
-                        onMouseEnter={() => handleMouseEnter((b.vehicle as any).imageUrl)}
-                        onMouseLeave={handleMouseLeave}
-                        onMouseMove={handleMouseMove}
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded bg-muted flex items-center justify-center border border-border shrink-0">
-                        <Truck className="h-8 w-8 text-muted-foreground" />
+              .map((b) => {
+                const now = new Date();
+                const startTime = new Date(b.startTime);
+                const diffHours = (startTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+                const canCancelDirectly = diffHours >= 12;
+
+                return (
+                  <div key={b.id} className="pt-3 first:pt-0 space-y-2 text-xs">
+                    <div className="flex justify-between items-center font-semibold">
+                      <span className="font-mono text-primary font-bold">{b.tripNumber}</span>
+                      <div className="flex items-center gap-1.5">
+                        {!canCancelDirectly && (
+                          <Badge variant="outline" className="text-[9px] font-bold text-amber-500 bg-amber-500/10 border-amber-500/30">
+                            &lt;12h to start
+                          </Badge>
+                        )}
+                        <Badge variant="warning">{b.status}</Badge>
                       </div>
-                    )}
-                    <div>
-                      <span className="font-semibold block">{b.vehicle?.name || "Vehicle"} ({b.vehicle?.vehicleNumber || "—"})</span>
-                      <span className="text-muted-foreground block">{b.pickup} ➔ {b.destination}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {(b.vehicle as any)?.imageUrl ? (
+                        <img 
+                          src={(b.vehicle as any).imageUrl} 
+                          alt={b.vehicle?.name} 
+                          className="w-14 h-14 rounded object-cover border border-border shrink-0 cursor-zoom-in" 
+                          loading="lazy"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActivePreviewImage((b.vehicle as any).imageUrl);
+                          }}
+                          onMouseEnter={() => handleMouseEnter((b.vehicle as any).imageUrl)}
+                          onMouseLeave={handleMouseLeave}
+                          onMouseMove={handleMouseMove}
+                        />
+                      ) : (
+                        <div className="w-14 h-14 rounded bg-muted flex items-center justify-center border border-border shrink-0">
+                          <Truck className="h-7 w-7 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div>
+                        <span className="font-semibold block text-sm">{b.vehicle?.name || "Vehicle"} ({b.vehicle?.vehicleNumber || "—"})</span>
+                        <span className="text-muted-foreground block text-[11px]">{b.pickup} ➔ {b.destination}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-muted-foreground font-mono flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mt-2 pt-2 border-t border-border/30">
+                      <span>{mounted ? `📅 ${new Date(b.startTime).toLocaleDateString()} · ${new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}</span>
+
+                      {canCancelDirectly ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[10px] border-red-500/30 text-red-500 hover:bg-red-500/10 font-bold cursor-pointer shrink-0"
+                          onClick={async () => {
+                            if (confirm("Are you sure you want to cancel this booking?")) {
+                              startTransition(async () => {
+                                const res = await cancelUserBookingAction(b.id);
+                                if (res.error) {
+                                  if (res.requiresSupport) {
+                                    setSupportBooking(b);
+                                  } else {
+                                    alert(res.error);
+                                  }
+                                } else {
+                                  router.refresh();
+                                }
+                              });
+                            }
+                          }}
+                          disabled={isPending}
+                        >
+                          Cancel Booking
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[10px] border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 font-bold cursor-pointer shrink-0"
+                          onClick={() => setSupportBooking(b)}
+                        >
+                          <Headphones className="h-3 w-3 mr-1 text-amber-500" /> Contact Support to Cancel
+                        </Button>
+                      )}
                     </div>
                   </div>
-                  <div className="text-[10px] text-muted-foreground font-mono flex justify-between items-center mt-2 pt-2 border-t border-border/30">
-                    <span>{mounted ? `📅 ${new Date(b.startTime).toLocaleDateString()} · ${new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}</span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 text-[10px] border-red-500/30 text-red-500 hover:bg-red-500/10 cursor-pointer"
-                      onClick={async () => {
-                        if (confirm("Are you sure you want to cancel this booking?")) {
-                          startTransition(async () => {
-                            const res = await cancelUserBookingAction(b.id);
-                            if (res.error) {
-                              alert(res.error);
-                            } else {
-                              router.refresh();
-                            }
-                          });
-                        }
-                      }}
-                      disabled={isPending}
-                    >
-                      Cancel Booking
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             {bookings.filter((b) => b.driverId === driver.id && b.status !== "COMPLETED" && b.status !== "CANCELLED").length === 0 && (
               <p className="text-xs text-muted-foreground text-center italic py-6">{t("no_upcoming_bookings")}</p>
             )}
           </div>
         </CardContent>
       </Card>
+
+      {/* Contact Support Cancellation Modal */}
+      {supportBooking && (
+        <Dialog
+          isOpen={!!supportBooking}
+          onClose={() => setSupportBooking(null)}
+          title="Cancellation Restricted (<12 Hours)"
+          className="max-w-md"
+        >
+          <div className="space-y-4">
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 flex items-start gap-3 shadow-sm">
+              <ShieldAlert className="h-6 w-6 text-amber-500 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs">
+                <h4 className="font-bold text-sm">Direct System Cancellation Disabled</h4>
+                <p className="leading-relaxed">
+                  Bookings starting within 12 hours cannot be cancelled directly through the system. Scheduled start time:{" "}
+                  <strong>
+                    {new Date(supportBooking.startTime).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })} ({new Date(supportBooking.startTime).toLocaleDateString()})
+                  </strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-muted/20 border border-border/60 text-xs space-y-2">
+              <div className="flex justify-between border-b border-border/40 pb-1.5">
+                <span className="text-muted-foreground font-semibold">Trip Reference:</span>
+                <span className="font-mono font-bold text-primary">{supportBooking.tripNumber}</span>
+              </div>
+              <div className="flex justify-between border-b border-border/40 pb-1.5">
+                <span className="text-muted-foreground font-semibold">Assigned Vehicle:</span>
+                <span className="font-semibold text-foreground">
+                  {supportBooking.vehicle?.name || "Vehicle"} ({supportBooking.vehicle?.vehicleNumber || "—"})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-semibold">Time Remaining to Start:</span>
+                <span className="font-bold text-amber-500">
+                  {Math.max(
+                    0,
+                    Math.round(
+                      ((new Date(supportBooking.startTime).getTime() - new Date().getTime()) / (1000 * 60 * 60)) * 10
+                    ) / 10
+                  )}{" "}
+                  Hours Remaining
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <span className="text-xs font-bold text-foreground block">Please contact Operations Support to request cancellation:</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <a
+                  href="tel:+18005558294"
+                  className="flex items-center justify-center gap-2 p-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-sm"
+                >
+                  <PhoneCall className="h-4 w-4" /> Call Dispatch Desk
+                </a>
+                <a
+                  href={`mailto:support@smartforcetaxi.com?subject=Urgent%20Cancellation%20Request%20${supportBooking.tripNumber}`}
+                  className="flex items-center justify-center gap-2 p-2.5 rounded-lg border border-border bg-card hover:bg-accent text-foreground font-bold text-xs transition-colors"
+                >
+                  <Mail className="h-4 w-4 text-primary" /> Email Support
+                </a>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-border">
+              <Button variant="outline" onClick={() => setSupportBooking(null)} className="text-xs font-semibold">
+                Close
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
 
       {/* Sunday Upload Reminder Dialog */}
       {showSundayPopup && (
@@ -1251,6 +1362,7 @@ export function DriverDashboardClient({
           </div>
         </Dialog>
       )}
+
     </div>
   );
 }

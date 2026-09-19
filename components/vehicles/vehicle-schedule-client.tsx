@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/utils/cn";
 import { Dialog } from "@/components/ui/dialog";
 import { useTranslation } from "@/components/layout/language-provider";
+import { BookingCalendarModal } from "./booking-calendar-modal";
 
 interface VehicleScheduleClientProps {
   vehicles: (Vehicle & { assignedDrivers?: User[] })[];
@@ -56,9 +57,8 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
   // Track which booking is clicked for details (keyed by vehicle ID)
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<Record<string, ClampedBooking | null>>({});
 
-  // Vehicle calendar states
+  // Vehicle calendar state
   const [calendarVehicle, setCalendarVehicle] = useState<Vehicle | null>(null);
-  const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date());
 
   // Generate date strip: 14 days starting from today
   const dateStrip = useMemo(() => {
@@ -86,68 +86,6 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
   // Format Helper: Full Date
   const formatFullDate = (date: Date) => {
     return date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: "numeric" });
-  };
-
-  const getDayBookingStats = (vehicleId: string, date: Date) => {
-    const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
-    const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-    const totalDayMs = 24 * 60 * 60 * 1000;
-
-    const dayBookings = bookings.filter((b) => {
-      if (b.status === "CANCELLED") return false;
-      if (b.vehicleId !== vehicleId) return false;
-      const bStart = new Date(b.startTime);
-      const bEnd = new Date(b.endTime);
-      return bStart < endOfDay && bEnd > startOfDay;
-    });
-
-    if (dayBookings.length === 0) {
-      return {
-        bookedMs: 0,
-        bookedHours: 0,
-        bookedPercentage: 0,
-        availablePercentage: 100,
-      };
-    }
-
-    // Clamp intervals to the day's bounds [startOfDay, endOfDay]
-    const intervals: { start: number; end: number }[] = dayBookings.map((b) => {
-      const s = Math.max(new Date(b.startTime).getTime(), startOfDay.getTime());
-      const e = Math.min(new Date(b.endTime).getTime(), endOfDay.getTime() + 1);
-      return { start: s, end: Math.max(s, e) };
-    });
-
-    // Sort by start time
-    intervals.sort((a, b) => a.start - b.start);
-
-    // Merge overlapping intervals to avoid double-counting
-    const merged: { start: number; end: number }[] = [];
-    for (const interval of intervals) {
-      if (merged.length === 0) {
-        merged.push(interval);
-      } else {
-        const last = merged[merged.length - 1];
-        if (interval.start <= last.end) {
-          last.end = Math.max(last.end, interval.end);
-        } else {
-          merged.push(interval);
-        }
-      }
-    }
-
-    const totalBookedMs = merged.reduce((acc, curr) => acc + (curr.end - curr.start), 0);
-    const clampedBookedMs = Math.min(Math.max(totalBookedMs, 0), totalDayMs);
-
-    const bookedPercentage = Math.round((clampedBookedMs / totalDayMs) * 1000) / 10;
-    const availablePercentage = Math.max(0, Math.round((100 - bookedPercentage) * 10) / 10);
-    const bookedHours = Math.round((clampedBookedMs / (1000 * 60 * 60)) * 10) / 10;
-
-    return {
-      bookedMs: clampedBookedMs,
-      bookedHours,
-      bookedPercentage,
-      availablePercentage,
-    };
   };
 
   // Boundaries for selected date (full 24 hours 00:00 - 24:00)
@@ -453,7 +391,12 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
                   
                   {/* Plate Number Badge & Calendar Icon Option */}
                   <div className="mt-2.5 flex items-center gap-2">
-                    <Badge variant="outline" className="font-mono text-[10px] font-bold bg-muted/30">
+                    <Badge
+                      variant="outline"
+                      className="font-mono text-[10px] font-bold bg-muted/30 cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+                      onClick={() => setCalendarVehicle(vehicle)}
+                      title="Click to open Booking Calendar"
+                    >
                       {vehicle.vehicleNumber}
                     </Badge>
                     <Button
@@ -461,11 +404,8 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
                       variant="outline"
                       size="icon"
                       className="h-6 w-6 p-0 rounded-md cursor-pointer hover:border-primary shrink-0"
-                      onClick={() => {
-                        setCalendarVehicle(vehicle);
-                        setCurrentMonth(new Date());
-                      }}
-                      title="View Vehicle Calendar Schedule"
+                      onClick={() => setCalendarVehicle(vehicle)}
+                      title="View Vehicle Booking Calendar Schedule"
                     >
                       <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
@@ -514,85 +454,88 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
               </div>
 
               {/* Col 2: Timeline Bar & Details (9 cols) */}
-              <div className="md:col-span-9 flex flex-col justify-between space-y-4">
-                {/* Timeline Grid Header Scale */}
-                <div className="relative h-4 w-full text-[9px] text-muted-foreground font-mono font-bold select-none">
-                  {timelineScale.map((item, index) => (
-                    <span
-                      key={index}
-                      className={cn(
-                        "absolute whitespace-nowrap",
-                        index === 0
-                          ? "left-0 translate-x-0"
-                          : index === timelineScale.length - 1
-                          ? "right-0 -translate-x-0"
-                          : "-translate-x-1/2",
-                        index % 2 !== 0 ? "hidden sm:inline" : ""
-                      )}
-                      style={index === timelineScale.length - 1 ? undefined : { left: `${item.pct}%` }}
-                    >
-                      {item.label}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Timeline Track */}
-                <div className="relative w-full h-11 bg-emerald-500/10 dark:bg-emerald-950/20 border border-emerald-500/25 rounded-lg flex overflow-hidden">
-                  {vehicle.status === "MAINTENANCE" ? (
-                    <div className="absolute inset-0 bg-red-500/10 flex items-center justify-center text-xs font-bold text-red-500/80 uppercase tracking-widest gap-2">
-                      <AlertCircle className="h-4.5 w-4.5" /> Out of Service (Maintenance)
-                    </div>
-                  ) : (
-                    <>
-                      {/* Grid guideline markers aligned with scale */}
-                      {timelineScale.slice(1, -1).map((item, idx) => (
-                        <div
-                          key={idx}
-                          className="absolute h-full w-[1px] bg-border/20"
-                          style={{ left: `${item.pct}%` }}
-                        />
+              <div className="md:col-span-9 flex flex-col justify-between space-y-4 overflow-hidden">
+                <div className="w-full overflow-x-auto pb-1 scrollbar-thin">
+                  <div className="min-w-[650px] md:min-w-0 space-y-2">
+                    {/* Timeline Grid Header Scale */}
+                    <div className="relative h-4 w-full text-[9px] text-muted-foreground font-mono font-bold select-none">
+                      {timelineScale.map((item, index) => (
+                        <span
+                          key={index}
+                          className={cn(
+                            "absolute whitespace-nowrap",
+                            index === 0
+                              ? "left-0 translate-x-0"
+                              : index === timelineScale.length - 1
+                              ? "right-0 -translate-x-0"
+                              : "-translate-x-1/2"
+                          )}
+                          style={index === timelineScale.length - 1 ? undefined : { left: `${item.pct}%` }}
+                        >
+                          {item.label}
+                        </span>
                       ))}
+                    </div>
 
-                      {/* Render Booked slots absolute overlays */}
-                      {vehicleBookings.map((booking) => {
-                        const totalMs = dayEnd.getTime() - dayStart.getTime();
-                        const leftPct = ((booking.clampedStart.getTime() - dayStart.getTime()) / totalMs) * 100;
-                        const widthPct = ((booking.clampedEnd.getTime() - booking.clampedStart.getTime()) / totalMs) * 100;
+                    {/* Timeline Track */}
+                    <div className="relative w-full h-11 bg-emerald-500/10 dark:bg-emerald-950/20 border border-emerald-500/25 rounded-lg flex overflow-hidden">
+                      {vehicle.status === "MAINTENANCE" ? (
+                        <div className="absolute inset-0 bg-red-500/10 flex items-center justify-center text-xs font-bold text-red-500/80 uppercase tracking-widest gap-2">
+                          <AlertCircle className="h-4.5 w-4.5" /> Out of Service (Maintenance)
+                        </div>
+                      ) : (
+                        <>
+                          {/* Grid guideline markers aligned with scale */}
+                          {timelineScale.slice(1, -1).map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="absolute h-full w-[1px] bg-border/20"
+                              style={{ left: `${item.pct}%` }}
+                            />
+                          ))}
 
-                        return (
-                          <button
-                            key={booking.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedBookingDetails((prev) => ({
-                                ...prev,
-                                [vehicle.id]: prev[vehicle.id]?.id === booking.id ? null : booking,
-                              }));
-                            }}
-                            className={cn(
-                              "absolute h-full border-l border-r border-orange-700/20 font-mono text-[9px] font-bold text-white px-1.5 flex flex-col justify-center items-center cursor-pointer select-none overflow-hidden hover:opacity-90 active:scale-95 transition-all",
-                              booking.status === "ACCEPTED" || booking.status === "IN_PROGRESS"
-                                ? "bg-amber-600 hover:bg-amber-700"
-                                : booking.status === "ASSIGNED"
-                                ? "bg-orange-500 hover:bg-orange-600"
-                                : "bg-zinc-600 hover:bg-zinc-700"
-                            )}
-                            style={{
-                              left: `${leftPct}%`,
-                              width: `${Math.max(widthPct, 2)}%`, // At least 2% to stay visible
-                            }}
-                          >
-                            <span className="truncate w-full block text-center">
-                              {formatTime12h(booking.startTime)}
-                            </span>
-                            <span className="truncate w-full block text-center opacity-85 text-[7px] hidden sm:inline">
-                              {booking.driverName}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </>
-                  )}
+                          {/* Render Booked slots absolute overlays */}
+                          {vehicleBookings.map((booking) => {
+                            const totalMs = dayEnd.getTime() - dayStart.getTime();
+                            const leftPct = ((booking.clampedStart.getTime() - dayStart.getTime()) / totalMs) * 100;
+                            const widthPct = ((booking.clampedEnd.getTime() - booking.clampedStart.getTime()) / totalMs) * 100;
+
+                            return (
+                              <button
+                                key={booking.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedBookingDetails((prev) => ({
+                                    ...prev,
+                                    [vehicle.id]: prev[vehicle.id]?.id === booking.id ? null : booking,
+                                  }));
+                                }}
+                                className={cn(
+                                  "absolute h-full border-l border-r border-orange-700/20 font-mono text-[9px] font-bold text-white px-1.5 flex flex-col justify-center items-center cursor-pointer select-none overflow-hidden hover:opacity-90 active:scale-95 transition-all",
+                                  booking.status === "ACCEPTED" || booking.status === "IN_PROGRESS"
+                                    ? "bg-amber-600 hover:bg-amber-700"
+                                    : booking.status === "ASSIGNED"
+                                    ? "bg-orange-500 hover:bg-orange-600"
+                                    : "bg-zinc-600 hover:bg-zinc-700"
+                                )}
+                                style={{
+                                  left: `${leftPct}%`,
+                                  width: `${Math.max(widthPct, 2)}%`, // At least 2% to stay visible
+                                }}
+                              >
+                                <span className="truncate w-full block text-center">
+                                  {formatTime12h(booking.startTime)}
+                                </span>
+                                <span className="truncate w-full block text-center opacity-85 text-[7px] hidden sm:inline">
+                                  {booking.driverName}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Slots Information Summary */}
@@ -707,140 +650,13 @@ export function VehicleScheduleClient({ vehicles, bookings }: VehicleScheduleCli
           </div>
         )}
       {calendarVehicle && (
-        <Dialog
+        <BookingCalendarModal
+          vehicle={calendarVehicle}
+          bookings={bookings}
           isOpen={!!calendarVehicle}
           onClose={() => setCalendarVehicle(null)}
-          title={`${t("booking_calendar")} - ${calendarVehicle.brand} ${calendarVehicle.name}`}
-          className="max-w-md"
-        >
-          <div className="space-y-4">
-            {/* Month Navigation */}
-            <div className="flex items-center justify-between pb-2 border-b border-border">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0 cursor-pointer"
-                onClick={() => {
-                  setCurrentMonth((prev) => {
-                    const d = new Date(prev);
-                    d.setMonth(prev.getMonth() - 1);
-                    return d;
-                  });
-                }}
-              >
-                &larr;
-              </Button>
-              <span className="text-sm font-bold text-foreground">
-                {currentMonth.toLocaleString("default", { month: "long", year: "numeric" })}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0 cursor-pointer"
-                onClick={() => {
-                  setCurrentMonth((prev) => {
-                    const d = new Date(prev);
-                    d.setMonth(prev.getMonth() + 1);
-                    return d;
-                  });
-                }}
-              >
-                &rarr;
-              </Button>
-            </div>
-
-            {/* Calendar Grid */}
-            <div className="grid grid-cols-7 gap-1 text-center">
-              {/* Day headers */}
-              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
-                <span key={day} className="text-[10px] font-bold text-muted-foreground uppercase py-1">
-                  {day}
-                </span>
-              ))}
-
-              {/* Days */}
-              {(() => {
-                const year = currentMonth.getFullYear();
-                const month = currentMonth.getMonth();
-                const firstDayIndex = new Date(year, month, 1).getDay();
-                const totalDays = new Date(year, month + 1, 0).getDate();
-
-                const cells = [];
-                for (let i = 0; i < firstDayIndex; i++) {
-                  cells.push(<div key={`empty-${i}`} className="h-[52px]" />);
-                }
-
-                for (let d = 1; d <= totalDays; d++) {
-                  const cellDate = new Date(year, month, d);
-                  const stats = getDayBookingStats(calendarVehicle.id, cellDate);
-
-                  let bookedPctDisplay = Math.round(stats.bookedPercentage);
-                  let availPctDisplay = 100 - bookedPctDisplay;
-                  if (stats.bookedPercentage > 0 && bookedPctDisplay === 0) {
-                    bookedPctDisplay = 1;
-                    availPctDisplay = 99;
-                  } else if (stats.bookedPercentage < 100 && bookedPctDisplay === 100) {
-                    bookedPctDisplay = 99;
-                    availPctDisplay = 1;
-                  }
-
-                  cells.push(
-                    <div
-                      key={`day-${d}`}
-                      className="h-[52px] border border-border/30 rounded-lg flex flex-col items-center justify-between p-1 bg-muted/5 hover:bg-muted/15 transition-colors cursor-default"
-                      title={`${cellDate.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}: ${bookedPctDisplay}% Booked (${stats.bookedHours}h) • ${availPctDisplay}% Available`}
-                    >
-                      <span className="text-[10px] font-bold text-foreground leading-none">{d}</span>
-                      
-                      {/* 24-Hour Percentage Bar */}
-                      <div className="w-full h-4 rounded overflow-hidden flex bg-muted/30 border border-black/10 dark:border-white/10 shadow-inner shrink-0">
-                        {bookedPctDisplay > 0 && (
-                          <div
-                            className="h-full bg-red-500 dark:bg-red-600 flex items-center justify-center transition-all shrink-0 overflow-hidden"
-                            style={{ width: `${bookedPctDisplay}%` }}
-                          >
-                            <span className="text-[8px] font-extrabold text-white leading-none px-0.5 truncate drop-shadow-xs">
-                              {bookedPctDisplay}%
-                            </span>
-                          </div>
-                        )}
-                        {availPctDisplay > 0 && (
-                          <div
-                            className="h-full bg-emerald-500 dark:bg-emerald-600 flex items-center justify-center transition-all shrink-0 overflow-hidden"
-                            style={{ width: `${availPctDisplay}%` }}
-                          >
-                            <span className="text-[8px] font-extrabold text-white leading-none px-0.5 truncate drop-shadow-xs">
-                              {availPctDisplay}%
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                }
-                return cells;
-              })()}
-            </div>
-
-            {/* Legend */}
-            <div className="flex justify-around pt-3 border-t border-border text-[10px] font-semibold text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-3 rounded bg-emerald-500 flex items-center justify-center text-[7px] font-bold text-white">
-                  %
-                </div>
-                <span>{t("available")} (Free %)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-3 rounded bg-red-500 flex items-center justify-center text-[7px] font-bold text-white">
-                  %
-                </div>
-                <span>{t("fully_booked")} (Booked %)</span>
-              </div>
-            </div>
-          </div>
-        </Dialog>
+          initialDate={selectedDate}
+        />
       )}
       </div>
     </div>

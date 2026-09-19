@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { LayoutDashboard, Truck, CalendarCheck } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarCheck, Receipt, User as UserIcon } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useTranslation } from "@/components/layout/language-provider";
 import { useDriverTab, DriverTab } from "@/components/drivers/driver-portal-context";
@@ -15,7 +15,10 @@ export function DriverNavbar() {
     { id: "dashboard" as const, href: "/driver", label: t("dashboard"), icon: LayoutDashboard },
     { id: "vehicles" as const, href: "/driver/available-vehicles", label: t("vehicles"), icon: Truck },
     { id: "weekly-log" as const, href: "/driver/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
+    { id: "earnings" as const, href: "/driver/earnings", label: "Earnings & Tax", icon: Receipt },
+    { id: "profile" as const, href: "/driver/profile", label: "My Profile", icon: UserIcon },
   ];
+
 
   return (
     <>

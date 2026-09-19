@@ -5,11 +5,16 @@ import { useDriverTab } from "./driver-portal-context";
 import { DriverDashboardClient } from "./driver-dashboard-client";
 import { AvailableVehiclesClient } from "./available-vehicles-client";
 import { WeeklyLogClient } from "./weekly-log-client";
+import { DriverEarningsClient } from "./driver-earnings-client";
+import { DriverProfileViewClient } from "./driver-profile-view-client";
 import { useTranslation } from "@/components/layout/language-provider";
-import { User, Vehicle, Trip, WeeklyLog } from "@prisma/client";
+import { User, Vehicle, Trip, WeeklyLog, DriverEarning, DriverSalary, PayrollRecord } from "@prisma/client";
 
 interface DriverPortalClientProps {
-  driver: User;
+  driver: User & {
+    salaryDetails?: DriverSalary | null;
+    payrollRecords?: PayrollRecord[];
+  };
   activeShift: any | null;
   assignedVehicle: Vehicle | null;
   vehicles: Vehicle[];
@@ -17,6 +22,7 @@ interface DriverPortalClientProps {
   activeTrip: (Trip & { vehicle: Vehicle }) | null;
   logs: WeeklyLog[];
   todayBookings: Trip[];
+  initialEarnings?: DriverEarning[];
 }
 
 export function DriverPortalClient({
@@ -28,6 +34,7 @@ export function DriverPortalClient({
   activeTrip,
   logs,
   todayBookings,
+  initialEarnings = [],
 }: DriverPortalClientProps) {
   const { activeTab } = useDriverTab();
   const { t } = useTranslation();
@@ -74,6 +81,18 @@ export function DriverPortalClient({
           initialLogs={logs}
         />
       </div>
+      <div className={activeTab === "earnings" ? "block" : "hidden"}>
+        <DriverEarningsClient
+          driver={driver}
+          initialEarnings={initialEarnings}
+        />
+      </div>
+      <div className={activeTab === "profile" ? "block" : "hidden"}>
+        <DriverProfileViewClient
+          driver={driver}
+        />
+      </div>
     </>
   );
 }
+

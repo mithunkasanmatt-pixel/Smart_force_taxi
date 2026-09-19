@@ -6,7 +6,7 @@ import { DriverPortalClient } from "@/components/drivers/driver-portal-client";
 
 export const revalidate = 0;
 
-export default async function DriverDashboard() {
+export default async function DriverEarningsPage() {
   const session = await auth();
 
   if (!session?.user || session.user.role !== "DRIVER") {
@@ -15,39 +15,24 @@ export default async function DriverDashboard() {
 
   const driver = await db.user.findUnique({
     where: { id: session.user.id },
-    include: {
-      salaryDetails: true,
-      payrollRecords: {
-        orderBy: {
-          createdAt: "desc",
-        },
-      },
-    },
   });
-
 
   if (!driver) {
     redirect("/login?error=SessionExpired");
   }
 
-  // Calculate today's time range for filtering bookings
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart);
   todayEnd.setDate(todayStart.getDate() + 1);
 
-  // Fetch all required data in parallel for optimized portal performance
   const [vehicles, bookings, activeTrip, assignedVehicle, logs, todayBookings, earnings] = await Promise.all([
     db.vehicle.findMany({
-      orderBy: {
-        name: "asc",
-      },
+      orderBy: { name: "asc" },
     }),
     db.trip.findMany({
       where: {
-        status: {
-          notIn: ["CANCELLED", "COMPLETED"],
-        },
+        status: { notIn: ["CANCELLED", "COMPLETED"] },
       },
       include: {
         driver: true,
@@ -57,18 +42,12 @@ export default async function DriverDashboard() {
     db.trip.findFirst({
       where: {
         driverId: driver.id,
-        status: {
-          in: ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"],
-        },
+        status: { in: ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"] },
       },
-      include: {
-        vehicle: true,
-      },
+      include: { vehicle: true },
     }),
     driver.assignedVehicleId
-      ? db.vehicle.findUnique({
-          where: { id: driver.assignedVehicleId },
-        })
+      ? db.vehicle.findUnique({ where: { id: driver.assignedVehicleId } })
       : Promise.resolve(null),
     db.weeklyLog.findMany({
       where: { driverId: driver.id },
@@ -77,15 +56,9 @@ export default async function DriverDashboard() {
     db.trip.findMany({
       where: {
         driverId: driver.id,
-        status: {
-          notIn: ["CANCELLED"],
-        },
-        startTime: {
-          lt: todayEnd,
-        },
-        endTime: {
-          gt: todayStart,
-        },
+        status: { notIn: ["CANCELLED"] },
+        startTime: { lt: todayEnd },
+        endTime: { gt: todayStart },
       },
     }),
     db.driverEarning.findMany({
@@ -108,4 +81,3 @@ export default async function DriverDashboard() {
     />
   );
 }
-
