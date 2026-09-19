@@ -722,9 +722,6 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                     <Button onClick={handleOpenBooking} className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs">
                       <Plus className="h-4 w-4 mr-1.5" /> Book Slot on Behalf
                     </Button>
-                    <a href="/admin/accounting" className="inline-flex items-center justify-center rounded-md text-xs font-semibold ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3">
-                      <CreditCard className="h-4 w-4 mr-1.5 text-emerald-500" /> Salary Details
-                    </a>
                   </div>
                 </div>
 

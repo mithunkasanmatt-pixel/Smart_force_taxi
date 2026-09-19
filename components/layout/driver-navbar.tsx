@@ -16,7 +16,6 @@ export function DriverNavbar() {
     { id: "vehicles" as const, href: "/driver/available-vehicles", label: t("vehicles"), icon: Truck },
     { id: "weekly-log" as const, href: "/driver/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
     { id: "earnings" as const, href: "/driver/earnings", label: "Earnings & Tax", icon: Receipt },
-    { id: "profile" as const, href: "/driver/profile", label: "My Profile", icon: UserIcon },
   ];
 
 
@@ -31,8 +30,7 @@ export function DriverNavbar() {
             <Link
               key={link.href}
               href={link.href}
-              onClick={(e) => {
-                e.preventDefault();
+              onClick={() => {
                 setActiveTab(link.id);
               }}
               className={cn(
@@ -58,8 +56,7 @@ export function DriverNavbar() {
             <Link
               key={link.href}
               href={link.href}
-              onClick={(e) => {
-                e.preventDefault();
+              onClick={() => {
                 setActiveTab(link.id);
               }}
               className={cn(

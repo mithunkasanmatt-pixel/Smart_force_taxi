@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { useSearchParams, usePathname } from "next/navigation";
+import { useSearchParams, usePathname, useRouter } from "next/navigation";
 
 export type DriverTab = "dashboard" | "vehicles" | "weekly-log" | "earnings" | "profile";
 
@@ -10,11 +10,12 @@ interface DriverTabContextProps {
   setActiveTab: (tab: DriverTab) => void;
 }
 
-const DriverTabContext = createContext<DriverTabContextProps | undefined>(undefined);
+export const DriverTabContext = createContext<DriverTabContextProps | undefined>(undefined);
 
 export function DriverTabProvider({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
+  const router = useRouter();
 
   const getTabFromUrl = (path: string, params: URLSearchParams): DriverTab => {
     if (path === "/driver/available-vehicles" || params.get("tab") === "vehicles") {
@@ -54,8 +55,11 @@ export function DriverTabProvider({ children }: { children: React.ReactNode }) {
       targetPath = "/driver/profile";
     }
 
-    // Instantly update browser address bar without server fetches
-    window.history.pushState(null, "", targetPath);
+    if (pathname !== "/driver" && pathname !== targetPath) {
+      router.push(targetPath);
+    } else {
+      window.history.pushState(null, "", targetPath);
+    }
   };
 
 

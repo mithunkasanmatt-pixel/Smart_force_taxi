@@ -7,7 +7,8 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const driverId = searchParams.get("driverId") || undefined;
-    const result = await checkAndNotifyLicenseExpiry(driverId);
+    const force = searchParams.get("force") === "true";
+    const result = await checkAndNotifyLicenseExpiry(driverId, force);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("License expiry check error:", error);

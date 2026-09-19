@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useTheme } from "./theme-provider";
 import { useTranslation } from "@/components/layout/language-provider";
 import { Bell, Moon, Sun, User as UserIcon, Check, LogOut, Menu } from "lucide-react";
@@ -8,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/utils/cn";
 import { signOut } from "next-auth/react";
+
+import { DriverTabContext } from "@/components/drivers/driver-portal-context";
 
 interface NotificationItem {
   id: string;
@@ -22,10 +25,12 @@ interface HeaderProps {
     name: string;
     email: string;
     role: string;
+    profilePicture?: string | null;
   };
 }
 
 export function Header({ user }: HeaderProps) {
+  const driverTabContext = React.useContext(DriverTabContext);
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t } = useTranslation();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -224,21 +229,67 @@ export function Header({ user }: HeaderProps) {
         <div className="flex items-center gap-2 border-l border-border pl-4 relative" ref={profileDropdownRef}>
           <button 
             onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary cursor-pointer hover:bg-primary/20 transition-colors focus:outline-none"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary cursor-pointer hover:bg-primary/20 transition-colors focus:outline-none overflow-hidden shrink-0 border border-primary/20 shadow-sm"
             aria-label="User Profile menu"
           >
-            <UserIcon className="h-5 w-5" />
+            {user.profilePicture ? (
+              <img src={user.profilePicture} alt={user.name} className="h-full w-full object-cover" />
+            ) : user.name ? (
+              <span className="font-bold text-xs">{user.name.charAt(0).toUpperCase()}</span>
+            ) : (
+              <UserIcon className="h-5 w-5" />
+            )}
           </button>
           
           {showProfileDropdown && (
-            <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-card p-2 shadow-xl z-50 text-card-foreground">
-              <button
-                onClick={() => signOut({ callbackUrl: "/login" })}
-                className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg text-red-500 hover:bg-red-500/10 cursor-pointer transition-colors"
-              >
-                <LogOut className="h-4 w-4" />
-                Logout
-              </button>
+            <div className="absolute right-0 top-full mt-2 w-60 rounded-xl border border-border bg-card p-3 shadow-xl z-50 text-card-foreground space-y-2">
+              {/* Profile Information Header */}
+              <div className="flex items-center gap-3 px-1 py-1.5 border-b border-border/60 pb-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm overflow-hidden border border-primary/20">
+                  {user.profilePicture ? (
+                    <img src={user.profilePicture} alt={user.name} className="h-full w-full object-cover" />
+                  ) : user.name ? (
+                    user.name.charAt(0).toUpperCase()
+                  ) : (
+                    <UserIcon className="h-5 w-5" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-foreground truncate">{user.name || "User Profile"}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{user.email || ""}</p>
+                  <div className="mt-1">
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-semibold uppercase bg-primary/10 text-primary border-primary/20">
+                      {user.role.toLowerCase().replace("_", " ")}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dropdown Options */}
+              <div className="space-y-1 pt-1">
+                {user.role === "DRIVER" && (
+                  <Link
+                    href="/driver/profile"
+                    onClick={() => {
+                      if (driverTabContext) {
+                        driverTabContext.setActiveTab("profile");
+                      }
+                      setShowProfileDropdown(false);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg text-foreground hover:bg-muted cursor-pointer transition-colors"
+                  >
+                    <UserIcon className="h-4 w-4 text-primary" />
+                    My Profile
+                  </Link>
+                )}
+                <button
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg text-red-500 hover:bg-red-500/10 cursor-pointer transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </button>
+              </div>
             </div>
           )}
         </div>

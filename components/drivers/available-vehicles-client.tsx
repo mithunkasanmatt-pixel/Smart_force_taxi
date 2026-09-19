@@ -16,6 +16,7 @@ interface AvailableVehiclesClientProps {
   currentUserId: string;
   currentUserRole: string;
   currentUserName: string;
+  assignedVehicleId?: string | null;
 }
 
 export function AvailableVehiclesClient({
@@ -24,6 +25,7 @@ export function AvailableVehiclesClient({
   currentUserId,
   currentUserRole,
   currentUserName,
+  assignedVehicleId,
 }: AvailableVehiclesClientProps) {
   const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
@@ -34,10 +36,18 @@ export function AvailableVehiclesClient({
     setMounted(true);
   }, []);
 
-  const filteredVehicles = vehicles.filter((v) => {
-    const searchString = `${v.name} ${v.brand} ${v.model} ${v.vehicleNumber}`.toLowerCase();
-    return searchString.includes(searchTerm.toLowerCase());
-  });
+  const filteredVehicles = vehicles
+    .filter((v) => {
+      const searchString = `${v.name} ${v.brand} ${v.model} ${v.vehicleNumber}`.toLowerCase();
+      return searchString.includes(searchTerm.toLowerCase());
+    })
+    .sort((a, b) => {
+      if (assignedVehicleId) {
+        if (a.id === assignedVehicleId) return -1;
+        if (b.id === assignedVehicleId) return 1;
+      }
+      return 0;
+    });
 
   return (
     <div className="mx-auto max-w-7xl w-full space-y-6">

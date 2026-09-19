@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { DriverNavbar } from "@/components/layout/driver-navbar";
 import { Header } from "@/components/layout/header";
 import { DriverTabProvider } from "@/components/drivers/driver-portal-context";
@@ -17,6 +18,11 @@ export default async function DriverLayout({
     redirect("/login");
   }
 
+  const driverUser = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { profilePicture: true },
+  });
+
   return (
     <DriverTabProvider>
       <div className="flex h-screen w-full flex-col overflow-hidden bg-background">
@@ -25,6 +31,7 @@ export default async function DriverLayout({
             name: session.user.name || "",
             email: session.user.email || "",
             role: "DRIVER",
+            profilePicture: driverUser?.profilePicture || undefined,
           }}
         />
         <DriverNavbar />

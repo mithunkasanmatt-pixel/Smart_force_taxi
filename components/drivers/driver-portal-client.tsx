@@ -73,6 +73,7 @@ export function DriverPortalClient({
           currentUserId={driver.id}
           currentUserRole="DRIVER"
           currentUserName={driver.name}
+          assignedVehicleId={driver.assignedVehicleId}
         />
       </div>
       <div className={activeTab === "weekly-log" ? "block" : "hidden"}>

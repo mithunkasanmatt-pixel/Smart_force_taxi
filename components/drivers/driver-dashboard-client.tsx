@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { bookCarAction, cancelBookingAction, cancelUserBookingAction } from "@/actions/driver-trips";
-import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2, Headphones, PhoneCall, Mail, ShieldAlert } from "lucide-react";
+import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2, Headphones, PhoneCall, Mail, ShieldAlert, AlertTriangle } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useTranslation } from "@/components/layout/language-provider";
 import { useRouter } from "next/navigation";
@@ -170,11 +170,19 @@ export function DriverDashboardClient({
   const availableCount = vehicles.filter(v => v.status === "AVAILABLE").length;
   const onTripCount = vehicles.filter(v => v.status === "ON_TRIP").length;
 
-  const filteredVehicles = vehicles.filter((car) => {
-    if (vehicleFilter === "AVAILABLE") return car.status === "AVAILABLE";
-    if (vehicleFilter === "ON_TRIP") return car.status === "ON_TRIP";
-    return true;
-  });
+  const filteredVehicles = vehicles
+    .filter((car) => {
+      if (vehicleFilter === "AVAILABLE") return car.status === "AVAILABLE";
+      if (vehicleFilter === "ON_TRIP") return car.status === "ON_TRIP";
+      return true;
+    })
+    .sort((a, b) => {
+      if (assignedVehicle) {
+        if (a.id === assignedVehicle.id) return -1;
+        if (b.id === assignedVehicle.id) return 1;
+      }
+      return 0;
+    });
 
   const activeVehicleForDisplay = selectedVehicle;
 
@@ -561,8 +569,43 @@ export function DriverDashboardClient({
     });
   };
 
+  const expiryDate = driver.licenseExpiry ? new Date(driver.licenseExpiry) : null;
+  const daysRemaining = expiryDate
+    ? Math.ceil((expiryDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  const isExpired = daysRemaining !== null && daysRemaining < 0;
+  const isExpiringSoon = daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 30;
+
   return (
     <div className="mx-auto max-w-7xl w-full space-y-6">
+      {/* License Expiry Notification Banner */}
+      {isExpired && (
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 flex items-start gap-3 shadow-sm animate-pulse">
+          <AlertTriangle className="h-6 w-6 shrink-0 mt-0.5 text-red-500" />
+          <div className="space-y-1">
+            <h4 className="font-bold text-sm">URGENT: Taxi License Expired!</h4>
+            <p className="text-xs text-red-600/90 dark:text-red-300">
+              Your taxi license expired {Math.abs(daysRemaining)} days ago on{" "}
+              {expiryDate?.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}. Please renew your license immediately and submit updated proof to your fleet manager. You cannot operate fleet vehicles with an expired license.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isExpiringSoon && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 flex items-start gap-3 shadow-sm">
+          <ShieldAlert className="h-6 w-6 shrink-0 mt-0.5 text-amber-500" />
+          <div className="space-y-1">
+            <h4 className="font-bold text-sm">Taxi License Expiring Soon!</h4>
+            <p className="text-xs text-amber-700/90 dark:text-amber-300">
+              Your taxi license will expire in <strong>{daysRemaining} day(s)</strong> on{" "}
+              {expiryDate?.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}. Please renew your license promptly to prevent disruption to your driving duties.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Welcome banner & Driver details */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 bg-card border border-border p-6 rounded-2xl text-foreground glass glow-primary">
         <div>
