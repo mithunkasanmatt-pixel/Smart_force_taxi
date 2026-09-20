@@ -30,7 +30,8 @@ export function DriverNavbar() {
             <Link
               key={link.href}
               href={link.href}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
                 setActiveTab(link.id);
               }}
               className={cn(
@@ -56,7 +57,8 @@ export function DriverNavbar() {
             <Link
               key={link.href}
               href={link.href}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
                 setActiveTab(link.id);
               }}
               className={cn(

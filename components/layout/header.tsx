@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useTheme } from "./theme-provider";
 import { useTranslation } from "@/components/layout/language-provider";
@@ -54,22 +54,23 @@ export function Header({ user }: HeaderProps) {
   }, []);
 
   // Fetch initial notifications using a public api endpoint
-  useEffect(() => {
-    async function fetchNotifications() {
-      try {
-        const res = await fetch("/api/notifications");
-        if (res.ok) {
-          const data = await res.json();
-          setNotifications(data);
-        }
-      } catch (err) {
-        console.error("Failed to load notifications", err);
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications");
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data);
       }
+    } catch (err) {
+      console.error("Failed to load notifications", err);
     }
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 15000); // Poll every 15s for updates
-    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60000); // Optimized 60s polling
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 

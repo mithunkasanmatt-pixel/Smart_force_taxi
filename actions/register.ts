@@ -150,25 +150,68 @@ export async function updateDriverProfileAction(
     experience?: number;
     emergencyContact?: string;
     shift?: string;
+    password?: string;
   }
 ) {
   try {
+    const formattedEmail = data.email.toLowerCase().trim();
+
+    // Check if email belongs to another user
+    const existingUser = await db.user.findFirst({
+      where: {
+        email: formattedEmail,
+        id: { not: driverId },
+      },
+    });
+
+    if (existingUser) {
+      return { error: "Another account with this email address already exists." };
+    }
+
+    let finalProfilePicture = data.profilePicture !== undefined ? data.profilePicture : undefined;
+
+    // Handle Cloudinary upload if profile picture is provided as base64 data URL
+    if (data.profilePicture && data.profilePicture.startsWith("data:image")) {
+      try {
+        if (process.env.CLOUDINARY_CLOUD_NAME) {
+          const uploadResult = await cloudinary.uploader.upload(data.profilePicture, {
+            folder: "driver-profiles",
+          });
+          finalProfilePicture = uploadResult.secure_url;
+        }
+      } catch (uploadErr) {
+        console.error("Cloudinary driver profile picture upload warning:", uploadErr);
+      }
+    }
+
+    const updateData: any = {
+      name: data.name,
+      email: formattedEmail,
+      phone: data.phone || null,
+      ssn: data.ssn || null,
+      homeAddress: data.homeAddress || null,
+      licenseNumber: data.licenseNumber || null,
+      licenseIssueDate: data.licenseIssueDate ? new Date(data.licenseIssueDate) : null,
+      licenseExpiry: data.licenseExpiry ? new Date(data.licenseExpiry) : null,
+      experience: data.experience !== undefined && data.experience !== null ? Number(data.experience) : null,
+      emergencyContact: data.emergencyContact || null,
+    };
+
+    if (finalProfilePicture !== undefined) {
+      updateData.profilePicture = finalProfilePicture || null;
+    }
+
+    if (data.shift) {
+      updateData.shift = data.shift;
+    }
+
+    if (data.password && data.password.trim().length > 0) {
+      updateData.password = hashPassword(data.password.trim());
+    }
+
     const updated = await db.user.update({
       where: { id: driverId },
-      data: {
-        name: data.name,
-        email: data.email.toLowerCase().trim(),
-        phone: data.phone || null,
-        ssn: data.ssn || null,
-        homeAddress: data.homeAddress || null,
-        licenseNumber: data.licenseNumber || null,
-        licenseIssueDate: data.licenseIssueDate ? new Date(data.licenseIssueDate) : null,
-        licenseExpiry: data.licenseExpiry ? new Date(data.licenseExpiry) : null,
-        profilePicture: data.profilePicture || null,
-        experience: data.experience !== undefined ? Number(data.experience) : null,
-        emergencyContact: data.emergencyContact || null,
-        shift: data.shift || undefined,
-      },
+      data: updateData,
     });
 
     return { success: true, user: updated };

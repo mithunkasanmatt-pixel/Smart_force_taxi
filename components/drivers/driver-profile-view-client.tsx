@@ -19,15 +19,30 @@ interface DriverProfileViewProps {
 export function DriverProfileViewClient({ driver }: DriverProfileViewProps) {
   const [showSsn, setShowSsn] = useState(false);
 
-  // Calculate License Expiry Days
-  const now = new Date();
+  // Calculate License Expiry Days & Warning Period
   const expiryDate = driver.licenseExpiry ? new Date(driver.licenseExpiry) : null;
-  const daysRemaining = expiryDate
-    ? Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-    : null;
+  let isExpiringSoon = false;
+  let isExpired = false;
+  let daysRemaining: number | null = null;
 
-  const isExpired = daysRemaining !== null && daysRemaining < 0;
-  const isExpiringSoon = daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 30;
+  if (expiryDate) {
+    const now = new Date();
+    const warningStartDate = new Date(expiryDate);
+    const targetMonth = warningStartDate.getMonth() - 1;
+    warningStartDate.setMonth(targetMonth);
+    if (warningStartDate.getMonth() > (targetMonth < 0 ? 11 : targetMonth)) {
+      warningStartDate.setDate(0);
+    }
+    warningStartDate.setHours(0, 0, 0, 0);
+
+    daysRemaining = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (now > expiryDate) {
+      isExpired = true;
+    } else if (now >= warningStartDate) {
+      isExpiringSoon = true;
+    }
+  }
 
   return (
     <div className="space-y-6 pb-12">
@@ -38,7 +53,7 @@ export function DriverProfileViewClient({ driver }: DriverProfileViewProps) {
           <div className="space-y-1">
             <h4 className="font-bold text-sm">URGENT: Taxi License Expired!</h4>
             <p className="text-xs text-red-600/90 dark:text-red-300">
-              Your taxi license expired {Math.abs(daysRemaining)} days ago on{" "}
+              Your taxi license expired {Math.abs(daysRemaining || 0)} days ago on{" "}
               {expiryDate?.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}. Please renew your license immediately and submit updated proof to your fleet manager. You cannot operate fleet vehicles with an expired license.
             </p>
           </div>

@@ -37,21 +37,6 @@ export function DriverPortalClient({
   initialEarnings = [],
 }: DriverPortalClientProps) {
   const { activeTab } = useDriverTab();
-  const { t } = useTranslation();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    // Avoid layout shifts or hydrations mismatches by displaying initial server view shell
-    return (
-      <div className="mx-auto max-w-7xl w-full py-8 text-center text-muted-foreground animate-pulse">
-        {t("loading_driver_portal")}
-      </div>
-    );
-  }
 
   return (
     <>
