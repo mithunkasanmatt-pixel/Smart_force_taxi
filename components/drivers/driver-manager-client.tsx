@@ -15,8 +15,8 @@ import { cn } from "@/utils/cn";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { registerUser } from "@/actions/register";
-import { Mail, Lock, CreditCard, Calendar, Briefcase, ShieldAlert, AlertCircle, Loader2, User as UserIcon, Eye, EyeOff, Upload } from "lucide-react";
+import { registerUser, updateDriverProfileAction } from "@/actions/register";
+import { Mail, Lock, CreditCard, Calendar, Briefcase, ShieldAlert, AlertCircle, Loader2, User as UserIcon, Eye, EyeOff, Upload, Pencil } from "lucide-react";
 import { isWeakPassword } from "@/lib/auth-utils";
 
 const passwordValidation = z.string()
@@ -84,7 +84,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
   const [clickedBookedSlot, setClickedBookedSlot] = useState<any>(null);
   const [activeField, setActiveField] = useState<"from" | "to">("from");
 
-  // Register Driver popup states
+  // Register Driver popup states & File Input Ref
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [registerSuccess, setRegisterSuccess] = useState(false);
@@ -94,6 +94,33 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
   const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null);
   const [profileImageSizeKb, setProfileImageSizeKb] = useState<number | null>(null);
   const [profileImageError, setProfileImageError] = useState<string | null>(null);
+  const registerFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Edit Driver popup states & File Input Ref
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isEditLoading, setIsEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
+  const [editImageSizeKb, setEditImageSizeKb] = useState<number | null>(null);
+  const [editImageError, setEditImageError] = useState<string | null>(null);
+  const editFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const [editForm, setEditForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    ssn: "",
+    homeAddress: "",
+    licenseNumber: "",
+    licenseIssueDate: "",
+    licenseExpiry: "",
+    experience: 0,
+    emergencyContact: "",
+    password: "",
+    profilePicture: "",
+  });
 
   // Helper to compress and resize images up to 500 KB limit
   const compressImageFile = (file: File): Promise<{ dataUrl: string; sizeKb: number }> => {
@@ -129,7 +156,6 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
           if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
             const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-            // Calculate base64 size in KB
             const sizeKb = Math.round((dataUrl.length * 3) / 4 / 1024);
             resolve({ dataUrl, sizeKb });
           } else {
@@ -143,7 +169,6 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
       reader.onerror = (err) => reject(err);
     });
   };
-
 
   const {
     register: registerField,
@@ -170,6 +195,24 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
     },
   });
 
+  const resetRegisterModal = useCallback(() => {
+    resetRegisterForm();
+    setProfileImagePreview(null);
+    setProfileImageSizeKb(null);
+    setProfileImageError(null);
+    setRegisterError(null);
+    setRegisterSuccess(false);
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    if (registerFileInputRef.current) {
+      registerFileInputRef.current.value = "";
+    }
+  }, [resetRegisterForm]);
+
+  const handleOpenRegisterModal = () => {
+    resetRegisterModal();
+    setIsRegisterOpen(true);
+  };
 
   const onRegisterSubmit = async (data: RegisterFormValues) => {
     setIsRegisterLoading(true);
@@ -199,14 +242,92 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
         setIsRegisterLoading(false);
         setTimeout(() => {
           setIsRegisterOpen(false);
-          setRegisterSuccess(false);
-          resetRegisterForm();
+          resetRegisterModal();
           router.refresh();
-        }, 2000);
+        }, 1500);
       }
     } catch (err) {
       setRegisterError("An unexpected error occurred. Please try again.");
       setIsRegisterLoading(false);
+    }
+  };
+
+  const handleOpenEditDriver = () => {
+    if (!activeDriver) return;
+    const formatDateStr = (date: Date | string | null | undefined) => {
+      if (!date) return "";
+      const d = new Date(date);
+      return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+    };
+
+    setEditForm({
+      name: activeDriver.name || "",
+      email: activeDriver.email || "",
+      phone: activeDriver.phone || "",
+      ssn: activeDriver.ssn || "",
+      homeAddress: activeDriver.homeAddress || "",
+      licenseNumber: activeDriver.licenseNumber || "",
+      licenseIssueDate: formatDateStr(activeDriver.licenseIssueDate),
+      licenseExpiry: formatDateStr(activeDriver.licenseExpiry),
+      experience: activeDriver.experience || 0,
+      emergencyContact: activeDriver.emergencyContact || "",
+      password: "",
+      profilePicture: activeDriver.profilePicture || "",
+    });
+    setEditImagePreview(activeDriver.profilePicture || null);
+    setEditImageSizeKb(null);
+    setEditImageError(null);
+    setEditError(null);
+    setEditSuccess(false);
+    setShowEditPassword(false);
+    if (editFileInputRef.current) {
+      editFileInputRef.current.value = "";
+    }
+    setIsEditOpen(true);
+  };
+
+  const onEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeDriver) return;
+    if (!editForm.name || !editForm.email) {
+      setEditError("Full Name and Email Address are required.");
+      return;
+    }
+
+    setIsEditLoading(true);
+    setEditError(null);
+
+    try {
+      const result = await updateDriverProfileAction(activeDriver.id, {
+        name: editForm.name,
+        email: editForm.email,
+        phone: editForm.phone || undefined,
+        ssn: editForm.ssn || undefined,
+        homeAddress: editForm.homeAddress || undefined,
+        licenseNumber: editForm.licenseNumber || undefined,
+        licenseIssueDate: editForm.licenseIssueDate || undefined,
+        licenseExpiry: editForm.licenseExpiry || undefined,
+        profilePicture: editForm.profilePicture || undefined,
+        experience: Number(editForm.experience) || 0,
+        emergencyContact: editForm.emergencyContact || undefined,
+        password: editForm.password || undefined,
+      });
+
+      if (result.error) {
+        setEditError(result.error);
+        setIsEditLoading(false);
+      } else {
+        setEditSuccess(true);
+        setIsEditLoading(false);
+        setTimeout(() => {
+          setIsEditOpen(false);
+          setEditSuccess(false);
+          router.refresh();
+        }, 1500);
+      }
+    } catch (err) {
+      setEditError("Failed to update driver details. Please try again.");
+      setIsEditLoading(false);
     }
   };
 
@@ -623,8 +744,8 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
           </p>
         </div>
         <Button
-          onClick={() => setIsRegisterOpen(true)}
-          className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold shrink-0"
+          onClick={handleOpenRegisterModal}
+          className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold shrink-0 cursor-pointer"
         >
           <Plus className="h-4.5 w-4.5 mr-2" /> Register Driver
         </Button>
@@ -719,6 +840,13 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
 
                   {/* Right Action Buttons */}
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <Button
+                      onClick={handleOpenEditDriver}
+                      variant="outline"
+                      className="border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-bold text-xs shrink-0 cursor-pointer"
+                    >
+                      <Pencil className="h-4 w-4 mr-1.5" /> Edit Driver
+                    </Button>
                     <Button onClick={handleOpenBooking} className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs">
                       <Plus className="h-4 w-4 mr-1.5" /> Book Slot on Behalf
                     </Button>
@@ -772,10 +900,20 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                           : "N/A"}
                       </span>
                       {activeDriver.licenseExpiry && (() => {
-                        const days = Math.ceil((new Date(activeDriver.licenseExpiry).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
-                        if (days < 0) {
+                        const expiry = new Date(activeDriver.licenseExpiry);
+                        const warningStart = new Date(expiry);
+                        const targetMonth = warningStart.getMonth() - 1;
+                        warningStart.setMonth(targetMonth);
+                        if (warningStart.getMonth() > (targetMonth < 0 ? 11 : targetMonth)) {
+                          warningStart.setDate(0);
+                        }
+                        warningStart.setHours(0, 0, 0, 0);
+
+                        const now = new Date();
+                        const days = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 3600 * 24));
+                        if (now > expiry) {
                           return <Badge className="bg-red-500/20 text-red-500 hover:bg-red-500/20 border-red-500/30 text-[9px]">Expired</Badge>;
-                        } else if (days <= 30) {
+                        } else if (now >= warningStart) {
                           return <Badge className="bg-amber-500/20 text-amber-500 hover:bg-amber-500/20 border-amber-500/30 text-[9px]">{days}d left</Badge>;
                         } else {
                           return <Badge className="bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20 border-emerald-500/30 text-[9px]">Valid</Badge>;
@@ -1651,6 +1789,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                     )}
 
                     <input
+                      ref={registerFileInputRef}
                       id="profile-picture-upload"
                       type="file"
                       accept="image/*"
@@ -1684,8 +1823,6 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                   </div>
                 </div>
               </div>
-
-
 
               {/* Experience */}
               <div className="space-y-1">
@@ -1730,7 +1867,6 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
               </div>
             </div>
 
-
             <Button type="submit" className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold" disabled={isRegisterLoading}>
               {isRegisterLoading ? (
                 <>
@@ -1739,6 +1875,351 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                 </>
               ) : (
                 t("register_button")
+              )}
+            </Button>
+          </form>
+        )}
+      </Dialog>
+
+      {/* EDIT DRIVER DIALOG MODAL */}
+      <Dialog
+        isOpen={isEditOpen}
+        onClose={() => {
+          setIsEditOpen(false);
+          setEditError(null);
+          setEditSuccess(false);
+        }}
+        title={`Edit Driver Profile - ${activeDriver?.name || "Driver"}`}
+      >
+
+        {editSuccess ? (
+          <div className="py-8 text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="h-6 w-6" />
+            </div>
+            <h4 className="text-lg font-bold text-foreground">Driver Updated Successfully!</h4>
+            <p className="text-xs text-muted-foreground">The driver profile details have been saved.</p>
+          </div>
+        ) : (
+          <form onSubmit={onEditSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+            {editError && (
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-500 font-medium">
+                {editError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Full Name */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-name">
+                  Full Name *
+                </label>
+                <div className="relative">
+                  <UserIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-name"
+                    type="text"
+                    required
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Email */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-email">
+                  Email Address *
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    required
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-phone">
+                  Phone Number
+                </label>
+                <div className="relative">
+                  <ShieldAlert className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-phone"
+                    type="tel"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* SSN */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-ssn">
+                  Social Security Number (SSN)
+                </label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-ssn"
+                    type="text"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.ssn}
+                    onChange={(e) => setEditForm({ ...editForm, ssn: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Home Address */}
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-homeAddress">
+                  Home Address
+                </label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-homeAddress"
+                    type="text"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.homeAddress}
+                    onChange={(e) => setEditForm({ ...editForm, homeAddress: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* License Number */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-licenseNumber">
+                  Driving License Number
+                </label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-licenseNumber"
+                    type="text"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.licenseNumber}
+                    onChange={(e) => setEditForm({ ...editForm, licenseNumber: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* License Issue Date */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-licenseIssueDate">
+                  Taxi License Issue Date
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-licenseIssueDate"
+                    type="date"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.licenseIssueDate}
+                    onChange={(e) => setEditForm({ ...editForm, licenseIssueDate: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* License Expiry Date */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-licenseExpiry">
+                  Taxi License Expiry Date
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-licenseExpiry"
+                    type="date"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.licenseExpiry}
+                    onChange={(e) => setEditForm({ ...editForm, licenseExpiry: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Experience */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-experience">
+                  Years of Experience
+                </label>
+                <div className="relative">
+                  <Briefcase className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-experience"
+                    type="number"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.experience}
+                    onChange={(e) => setEditForm({ ...editForm, experience: Number(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+
+              {/* Emergency Contact */}
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-emergencyContact">
+                  Emergency Contact Number
+                </label>
+                <div className="relative">
+                  <ShieldAlert className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-emergencyContact"
+                    type="tel"
+                    className="pl-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.emergencyContact}
+                    onChange={(e) => setEditForm({ ...editForm, emergencyContact: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Optional New Password */}
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground" htmlFor="edit-password">
+                  Reset Password (Leave blank to keep existing password)
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-password"
+                    type={showEditPassword ? "text" : "password"}
+                    placeholder="Enter new password if updating"
+                    className="pl-10 pr-10 focus-visible:ring-amber-500"
+                    disabled={isEditLoading}
+                    value={editForm.password}
+                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword(!showEditPassword)}
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Profile Image Upload */}
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground block">
+                  Driver Profile Image (Max 500 KB)
+                </label>
+                <div className="flex items-start gap-4 p-3 rounded-xl bg-muted/20 border border-border/80">
+                  {editImagePreview ? (
+                    <img
+                      src={editImagePreview}
+                      alt="Driver Profile Preview"
+                      className="w-16 h-16 rounded-full object-cover border-2 border-amber-500 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-amber-500/10 border-2 border-dashed border-amber-500/40 flex items-center justify-center text-amber-500 shrink-0">
+                      <UserIcon className="h-7 w-7" />
+                    </div>
+                  )}
+                  <div className="flex-1 space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label
+                        htmlFor="edit-profile-picture-upload"
+                        className="cursor-pointer inline-flex items-center justify-center rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-zinc-950 px-3 py-2 transition-colors shadow-sm"
+                      >
+                        <Upload className="h-3.5 w-3.5 mr-1.5" />
+                        {editImagePreview ? "Change Photo" : "Upload Profile Image"}
+                      </label>
+                      {editImagePreview && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditImagePreview(null);
+                            setEditImageSizeKb(null);
+                            setEditImageError(null);
+                            setEditForm({ ...editForm, profilePicture: "" });
+                          }}
+                          className="text-xs text-red-500 hover:bg-red-500/10 h-8"
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+
+                    {editImageError ? (
+                      <p className="text-xs text-red-500 font-bold bg-red-500/10 border border-red-500/20 p-2 rounded-lg">
+                        ⚠️ {editImageError}
+                      </p>
+                    ) : editImageSizeKb !== null ? (
+                      <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                        <span>Compressed Size: {editImageSizeKb} KB (Within 500 KB limit)</span>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground">
+                        PNG, JPG or WebP images up to <strong>500 KB</strong>. Images are automatically optimized.
+                      </p>
+                    )}
+
+                    <input
+                      ref={editFileInputRef}
+                      id="edit-profile-picture-upload"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={isEditLoading}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        setEditImageError(null);
+
+                        try {
+                          const { dataUrl, sizeKb } = await compressImageFile(file);
+
+                          if (sizeKb > 500) {
+                            setEditImageError(`Image size (${sizeKb} KB) exceeds the 500 KB limit. Please choose a smaller photo.`);
+                            setEditImagePreview(null);
+                            setEditImageSizeKb(null);
+                            setEditForm({ ...editForm, profilePicture: "" });
+                          } else {
+                            setEditImagePreview(dataUrl);
+                            setEditImageSizeKb(sizeKb);
+                            setEditForm({ ...editForm, profilePicture: dataUrl });
+                          }
+                        } catch (err) {
+                          console.error("Image processing error:", err);
+                          setEditImageError("Failed to process image file. Please try a different image.");
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold" disabled={isEditLoading}>
+              {isEditLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Save Changes...
+                </>
+              ) : (
+                "Save Driver Details"
               )}
             </Button>
           </form>

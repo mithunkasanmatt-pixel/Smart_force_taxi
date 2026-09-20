@@ -15,7 +15,6 @@ export const DriverTabContext = createContext<DriverTabContextProps | undefined>
 export function DriverTabProvider({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const router = useRouter();
 
   const getTabFromUrl = (path: string, params: URLSearchParams): DriverTab => {
     if (path === "/driver/available-vehicles" || params.get("tab") === "vehicles") {
@@ -33,12 +32,23 @@ export function DriverTabProvider({ children }: { children: React.ReactNode }) {
     return "dashboard";
   };
 
-  const [activeTab, setActiveTabState] = useState<DriverTab>("dashboard");
+  const [activeTab, setActiveTabState] = useState<DriverTab>(() => {
+    if (typeof window !== "undefined") {
+      return getTabFromUrl(window.location.pathname, new URLSearchParams(window.location.search));
+    }
+    return "dashboard";
+  });
 
-  // Sync state with URL when component mounts or URL pathname/searchParams change
+  // Sync state with URL on initial mount and when popstate (browser back/forward) occurs
   useEffect(() => {
-    const currentParams = new URLSearchParams(window.location.search);
-    setActiveTabState(getTabFromUrl(window.location.pathname, currentParams));
+    const handlePopState = () => {
+      const currentParams = new URLSearchParams(window.location.search);
+      setActiveTabState(getTabFromUrl(window.location.pathname, currentParams));
+    };
+
+    handlePopState();
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, [pathname, searchParams]);
 
   const setActiveTab = (tab: DriverTab) => {
@@ -55,13 +65,10 @@ export function DriverTabProvider({ children }: { children: React.ReactNode }) {
       targetPath = "/driver/profile";
     }
 
-    if (pathname !== "/driver" && pathname !== targetPath) {
-      router.push(targetPath);
-    } else {
-      window.history.pushState(null, "", targetPath);
+    if (typeof window !== "undefined" && window.location.pathname + window.location.search !== targetPath) {
+      window.history.pushState({ tab }, "", targetPath);
     }
   };
-
 
   return (
     <DriverTabContext.Provider value={{ activeTab, setActiveTab }}>

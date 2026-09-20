@@ -860,7 +860,20 @@ Smart Force Taxi Fleet Safety & Operations`;
 }
 
 /**
- * Scans all drivers and dispatches website & email notifications for licenses expiring within 30 days.
+ * Helper function to calculate exactly one month before a given expiry date, handling month boundary edge cases.
+ */
+export function getOneMonthBefore(expiryDate: Date): Date {
+  const warningStart = new Date(expiryDate);
+  const targetMonth = warningStart.getMonth() - 1;
+  warningStart.setMonth(targetMonth);
+  if (warningStart.getMonth() > (targetMonth < 0 ? 11 : targetMonth)) {
+    warningStart.setDate(0);
+  }
+  return warningStart;
+}
+
+/**
+ * Scans drivers and dispatches website & email notifications for licenses expiring within the 1-month warning period.
  * Daily notifications are sent twice: at 5:00 AM (morning slot) and at 5:00 PM (evening slot).
  * Notifications are sent ONLY during the one-month period before the license expiry date.
  */
@@ -869,14 +882,20 @@ export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, for
     const { db } = await import("@/lib/db");
     const now = new Date();
 
-    // Determine current day start (00:00:00) and noon (12:00:00) for morning (5:00 AM) vs evening (5:00 PM) slots
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    // Define 5:00 AM and 5:00 PM time thresholds for today
+    const today5AM = new Date(now);
+    today5AM.setHours(5, 0, 0, 0);
 
-    const todayNoon = new Date(now);
-    todayNoon.setHours(12, 0, 0, 0);
+    const today5PM = new Date(now);
+    today5PM.setHours(17, 0, 0, 0);
 
-    const isMorningSlot = now.getHours() < 12; // 00:00 - 11:59 (5:00 AM slot)
+    const isMorningSlot = now >= today5AM && now < today5PM;
+    const isEveningSlot = now >= today5PM;
+
+    // If current time is before 5:00 AM today and forceSend is false, skip dispatching scheduled notifications
+    if (!forceSend && !isMorningSlot && !isEveningSlot) {
+      return { success: true, notifiedCount: 0, message: "Before initial 5:00 AM notification window." };
+    }
 
     const whereCondition: any = {
       role: "DRIVER",
@@ -899,27 +918,32 @@ export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, for
       if (!driver.licenseExpiry) continue;
 
       const expiryDate = new Date(driver.licenseExpiry);
-      const diffTime = expiryDate.getTime() - now.getTime();
-      const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const warningStartDate = getOneMonthBefore(expiryDate);
+      warningStartDate.setHours(0, 0, 0, 0);
 
-      // Notifications should be sent ONLY during the one-month period before the license expiry date (0 to 30 days remaining)
-      if (daysRemaining >= 0 && daysRemaining <= 30) {
-        // Prevent duplicate notification for the same slot (5:00 AM or 5:00 PM) unless forceSend is true
-        if (!forceSend && !specificDriverId) {
+      // Notifications must be sent ONLY during the one-month period before the license expiry date
+      const isInWarningPeriod = now >= warningStartDate && now <= expiryDate;
+
+      if (isInWarningPeriod) {
+        // Prevent duplicate notification for the current slot (5:00 AM slot vs 5:00 PM slot) unless forceSend is true
+        if (!forceSend) {
           const slotNotificationCount = await db.notification.count({
             where: {
               userId: driver.id,
               type: "LICENSE_EXPIRY",
               createdAt: isMorningSlot
-                ? { gte: todayStart, lt: todayNoon }
-                : { gte: todayNoon },
+                ? { gte: today5AM, lt: today5PM }
+                : { gte: today5PM },
             },
           });
 
           if (slotNotificationCount > 0) {
-            continue; // Already notified during this slot today
+            continue; // Already notified during this 5:00 AM or 5:00 PM slot today
           }
         }
+
+        const diffTime = expiryDate.getTime() - now.getTime();
+        const daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
         const formattedExpiryDate = expiryDate.toLocaleDateString("en-US", {
           year: "numeric",

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { checkAndNotifyLicenseExpiry } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -10,13 +9,6 @@ export async function GET() {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Automatically check license expiry for driver when fetching notifications
-    if (session.user.role === "DRIVER") {
-      await checkAndNotifyLicenseExpiry(session.user.id);
-    } else {
-      await checkAndNotifyLicenseExpiry();
     }
 
     const notifications = await db.notification.findMany({
