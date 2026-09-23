@@ -340,7 +340,7 @@ export default function LoginPage() {
             <div className="mt-2 text-[10px] text-muted-foreground bg-muted/40 p-2.5 rounded-lg border border-border/40">
               <div>
                 <span className="font-semibold block text-foreground">Admin Portal</span>
-                admin@mattengg.com<br />Matt@4321admin
+                admin@smartforce.com<br />Smart@4321admin
               </div>
             </div>
           </div>
