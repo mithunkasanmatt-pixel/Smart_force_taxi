@@ -252,6 +252,7 @@ export function PerformanceMetricsAdminClient({
 
   // Verification Form State
   const [selectedDriverId, setSelectedDriverId] = useState<string>(initialDrivers[0]?.id || "");
+  const [modalPeriod, setModalPeriod] = useState<"THIS_WEEK" | "THIS_MONTH">("THIS_WEEK");
   const [inputBookedHours, setInputBookedHours] = useState<string>("0");
   const [inputActualHours, setInputActualHours] = useState<string>("0");
   const [inputNotes, setInputNotes] = useState<string>("");
@@ -331,28 +332,89 @@ export function PerformanceMetricsAdminClient({
     [initialTrips, periodType, selectedWeekInfo]
   );
 
-  // Calculate automatically suggested booked hours for selected driver
-  const autoBookedHours = useMemo(() => {
-    return getDriverBookedHours(selectedDriverId);
-  }, [selectedDriverId, getDriverBookedHours]);
+  // Modal specific helpers for calculation based on selected modalPeriod (This Week vs This Month)
+  const getModalBookedHours = useCallback(
+    (driverId: string, period: "THIS_WEEK" | "THIS_MONTH") => {
+      if (!driverId) return 0;
+      const now = new Date();
 
-  // Check if work is completed for currently selected driver
-  const isWorkCompletedForSelectedDriver = useMemo(() => {
-    return checkDriverWorkCompleted(selectedDriverId);
-  }, [selectedDriverId, checkDriverWorkCompleted]);
+      const driverTrips = initialTrips.filter((t) => {
+        if (t.driverId !== driverId || t.status === "CANCELLED") return false;
+        const tDate = new Date(t.startTime);
+        if (period === "THIS_WEEK") {
+          const currentWeekDetails = getLocalWeekDetails(now);
+          const details = getLocalWeekDetails(tDate);
+          return details.weekNumber === currentWeekDetails.weekNumber && details.year === currentWeekDetails.year;
+        } else {
+          return tDate.getFullYear() === now.getFullYear() && tDate.getMonth() === now.getMonth();
+        }
+      });
 
-  // Handle auto prefill when selected driver changes
-  const handleDriverSelectChange = (driverId: string) => {
+      let totalMs = 0;
+      driverTrips.forEach((trip) => {
+        const start = new Date(trip.startTime).getTime();
+        const end = new Date(trip.endTime).getTime();
+        if (end > start) {
+          totalMs += end - start;
+        }
+      });
+      const hours = totalMs / (1000 * 60 * 60);
+      return Math.round(hours * 10) / 10;
+    },
+    [initialTrips]
+  );
+
+  const checkModalWorkCompleted = useCallback(
+    (driverId: string, period: "THIS_WEEK" | "THIS_MONTH") => {
+      if (!driverId) return false;
+      const now = new Date();
+
+      const driverTrips = initialTrips.filter((t) => {
+        if (t.driverId !== driverId || t.status === "CANCELLED") return false;
+        const tDate = new Date(t.startTime);
+        if (period === "THIS_WEEK") {
+          const currentWeekDetails = getLocalWeekDetails(now);
+          const details = getLocalWeekDetails(tDate);
+          return details.weekNumber === currentWeekDetails.weekNumber && details.year === currentWeekDetails.year;
+        } else {
+          return tDate.getFullYear() === now.getFullYear() && tDate.getMonth() === now.getMonth();
+        }
+      });
+
+      if (driverTrips.length === 0) return false;
+
+      return driverTrips.some(
+        (t) => t.status === "COMPLETED" || new Date(t.endTime) <= now
+      );
+    },
+    [initialTrips]
+  );
+
+  const autoBookedHoursForModal = useMemo(() => {
+    return getModalBookedHours(selectedDriverId, modalPeriod);
+  }, [selectedDriverId, modalPeriod, getModalBookedHours]);
+
+  const isWorkCompletedForModal = useMemo(() => {
+    return checkModalWorkCompleted(selectedDriverId, modalPeriod);
+  }, [selectedDriverId, modalPeriod, checkModalWorkCompleted]);
+
+  // Handle auto prefill when selected driver or modal period changes
+  const handleDriverSelectChange = (driverId: string, customPeriod?: "THIS_WEEK" | "THIS_MONTH") => {
     setSelectedDriverId(driverId);
-    const calculatedBooked = getDriverBookedHours(driverId);
-    const workDone = checkDriverWorkCompleted(driverId);
+    const activePeriod = customPeriod || modalPeriod;
+    const calculatedBooked = getModalBookedHours(driverId, activePeriod);
+    const workDone = checkModalWorkCompleted(driverId, activePeriod);
+
+    const now = new Date();
+    const currentWeekDetails = getLocalWeekDetails(now);
 
     const existing = records.find((r) => {
-      if (r.driverId !== driverId || r.periodType !== periodType) return false;
-      if (periodType === "WEEKLY") {
-        return r.weekNumber === selectedWeekInfo.weekNumber && r.year === selectedWeekInfo.year;
+      if (r.driverId !== driverId) return false;
+      if (activePeriod === "THIS_WEEK") {
+        return r.periodType === "WEEKLY" && r.weekNumber === currentWeekDetails.weekNumber && r.year === currentWeekDetails.year;
+      } else {
+        return r.periodType === "MONTHLY" && r.month === (now.getMonth() + 1) && r.year === now.getFullYear();
       }
-      return r.year === selectedWeekInfo.year;
     });
 
     if (existing) {
@@ -364,6 +426,11 @@ export function PerformanceMetricsAdminClient({
       setInputActualHours(workDone ? calculatedBooked.toString() : "0");
       setInputNotes("");
     }
+  };
+
+  const handleModalPeriodToggle = (period: "THIS_WEEK" | "THIS_MONTH") => {
+    setModalPeriod(period);
+    handleDriverSelectChange(selectedDriverId, period);
   };
 
   // Filter records by periodType & selected week
@@ -503,8 +570,8 @@ export function PerformanceMetricsAdminClient({
     setFormError(null);
     setFormSuccess(null);
 
-    if (!isWorkCompletedForSelectedDriver) {
-      setFormError("Actual Driving Hours cannot be saved before the driver completes the work/booking.");
+    if (!isWorkCompletedForModal) {
+      setFormError("Actual Driving Hours cannot be saved before the driver completes the booked time.");
       setIsSubmitting(false);
       return;
     }
@@ -524,16 +591,32 @@ export function PerformanceMetricsAdminClient({
       return;
     }
 
-    const res = await verifyDriverHoursAction({
-      driverId: selectedDriverId,
-      periodType,
-      year: selectedWeekInfo.year,
-      weekNumber: selectedWeekInfo.weekNumber,
-      weekLabel: selectedWeekInfo.weekLabel,
-      bookedHours: booked,
-      actualHours: actual,
-      notes: inputNotes,
-    });
+    const now = new Date();
+    const currentWeekDetails = getLocalWeekDetails(now);
+
+    const res = await verifyDriverHoursAction(
+      modalPeriod === "THIS_WEEK"
+        ? {
+            driverId: selectedDriverId,
+            periodType: "WEEKLY",
+            year: currentWeekDetails.year,
+            weekNumber: currentWeekDetails.weekNumber,
+            weekLabel: currentWeekDetails.weekLabel,
+            bookedHours: booked,
+            actualHours: actual,
+            notes: inputNotes,
+          }
+        : {
+            driverId: selectedDriverId,
+            periodType: "MONTHLY",
+            year: now.getFullYear(),
+            month: now.getMonth() + 1,
+            weekLabel: `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`,
+            bookedHours: booked,
+            actualHours: actual,
+            notes: inputNotes,
+          }
+    );
 
     setIsSubmitting(false);
 
@@ -1318,13 +1401,50 @@ export function PerformanceMetricsAdminClient({
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   Verify driver actual driving hours against booked hours for{" "}
-                  <strong className="text-foreground">{selectedWeekInfo.weekLabel}</strong>.
+                  <strong className="text-foreground">
+                    {modalPeriod === "THIS_WEEK" ? "This Week" : "This Month"}
+                  </strong>.
                 </p>
               </div>
             </div>
 
             <form onSubmit={handleVerifySubmit} className="space-y-4">
-              {/* Driver Select */}
+              {/* Select Period: This Week or This Month */}
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">
+                  Select Period *
+                </label>
+                <div className="grid grid-cols-2 gap-2 bg-muted/60 p-1 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => handleModalPeriodToggle("THIS_WEEK")}
+                    className={cn(
+                      "py-2 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center justify-center gap-1.5",
+                      modalPeriod === "THIS_WEEK"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5" />
+                    This Week
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleModalPeriodToggle("THIS_MONTH")}
+                    className={cn(
+                      "py-2 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center justify-center gap-1.5",
+                      modalPeriod === "THIS_MONTH"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    This Month
+                  </button>
+                </div>
+              </div>
+
+              {/* Driver Select with Period Booking Hours */}
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">
                   Select Driver *
@@ -1335,11 +1455,14 @@ export function PerformanceMetricsAdminClient({
                   className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer"
                   required
                 >
-                  {initialDrivers.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} ({d.employeeId})
-                    </option>
-                  ))}
+                  {initialDrivers.map((d) => {
+                    const hrs = getModalBookedHours(d.id, modalPeriod);
+                    return (
+                      <option key={d.id} value={d.id}>
+                        {d.name} ({d.employeeId}) — {hrs}h Booked
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -1347,7 +1470,7 @@ export function PerformanceMetricsAdminClient({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1">
-                    Booked Hours *
+                    Booking Hours (Allotted) *
                   </label>
                   <input
                     type="number"
@@ -1360,20 +1483,20 @@ export function PerformanceMetricsAdminClient({
                     required
                   />
                   <span className="text-[10px] text-muted-foreground mt-0.5 block">
-                    Automatically calculated from bookings: {autoBookedHours}h
+                    Allotted for {modalPeriod === "THIS_WEEK" ? "This Week" : "This Month"}: {autoBookedHoursForModal}h
                   </span>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1 flex items-center justify-between">
                     <span>Actual Driving Hours *</span>
-                    {!isWorkCompletedForSelectedDriver ? (
+                    {!isWorkCompletedForModal ? (
                       <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
-                        <Lock className="h-3 w-3" /> Work Pending
+                        <Lock className="h-3 w-3" /> Booking Pending
                       </span>
                     ) : (
                       <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                        <Unlock className="h-3 w-3" /> Work Completed
+                        <Unlock className="h-3 w-3" /> Booking Completed
                       </span>
                     )}
                   </label>
@@ -1381,21 +1504,21 @@ export function PerformanceMetricsAdminClient({
                     type="number"
                     step="0.1"
                     min="0"
-                    disabled={!isWorkCompletedForSelectedDriver}
+                    disabled={!isWorkCompletedForModal}
                     value={inputActualHours}
                     onChange={(e) => setInputActualHours(e.target.value)}
-                    placeholder={!isWorkCompletedForSelectedDriver ? "Editable after work completion" : "e.g. 9"}
+                    placeholder={!isWorkCompletedForModal ? "Disabled until booking time is completed" : "e.g. 9"}
                     className={cn(
                       "w-full rounded-lg border px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 font-mono",
-                      !isWorkCompletedForSelectedDriver
-                        ? "bg-muted/60 text-muted-foreground border-amber-500/30 cursor-not-allowed"
+                      !isWorkCompletedForModal
+                        ? "bg-muted/60 text-muted-foreground border-amber-500/30 cursor-not-allowed opacity-75"
                         : "bg-card border-border focus:ring-primary/50"
                     )}
                     required
                   />
                   <span className="text-[10px] text-muted-foreground mt-0.5 block">
-                    {!isWorkCompletedForSelectedDriver
-                      ? "Actual Driving Hours field is locked until the driver completes the work/booking."
+                    {!isWorkCompletedForModal
+                      ? "Actual Driving Hours field is locked until the driver completes the booked time."
                       : "Verified actual driving hours entered by Admin"}
                   </span>
                 </div>
@@ -1468,7 +1591,7 @@ export function PerformanceMetricsAdminClient({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isSubmitting || !isWorkCompletedForSelectedDriver}
+                  disabled={isSubmitting || !isWorkCompletedForModal}
                   className="text-xs bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting ? "Saving..." : "Verify & Save Performance"}
