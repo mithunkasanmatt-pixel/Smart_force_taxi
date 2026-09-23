@@ -6,23 +6,20 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Seeding database...');
 
-  // Clean existing data in order of dependency
-  await prisma.notification.deleteMany({}).catch(() => {});
-  await prisma.payrollRecord.deleteMany({}).catch(() => {});
-  await prisma.driverSalary.deleteMany({}).catch(() => {});
-  await prisma.driverEarning.deleteMany({}).catch(() => {});
-  await prisma.weeklyLog.deleteMany({}).catch(() => {});
-  await prisma.trip.deleteMany({}).catch(() => {});
-  await prisma.vehicle.deleteMany({}).catch(() => {});
-  await prisma.user.deleteMany({}).catch(() => {});
+  const adminEmail = 'admin@smartforce.com';
+  const adminPassword = 'Smart@4321admin';
 
-  console.log('Deleted existing records.');
-
-  // Create Admin
-  const admin = await prisma.user.create({
-    data: {
-      email: 'admin@smartforce.com',
-      password: hashPassword('Smart@4321admin'),
+  // Upsert Admin user (creates if missing, updates password & role if exists without deleting existing data)
+  const admin = await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: {
+      password: hashPassword(adminPassword),
+      name: 'Super Admin',
+      role: Role.SUPER_ADMIN,
+    },
+    create: {
+      email: adminEmail,
+      password: hashPassword(adminPassword),
       name: 'Super Admin',
       role: Role.SUPER_ADMIN,
       employeeId: 'EMP-001',
@@ -30,10 +27,8 @@ async function main() {
       status: 'OFFLINE',
     },
   });
-  console.log('Created Admin User:', admin.email);
 
-
-
+  console.log('Admin User configured successfully:', admin.email);
   console.log('Seeding completed successfully!');
 }
 

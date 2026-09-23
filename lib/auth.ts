@@ -39,7 +39,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             role: user.role,
           };
         } catch (error) {
-          console.error("Auth error:", error);
+          console.error("Auth error:", error instanceof Error ? error.stack || error.message : error);
           return null;
         }
       }
