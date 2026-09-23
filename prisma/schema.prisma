@@ -72,6 +72,7 @@ model User {
   payrollRecords    PayrollRecord[]
   assignedVehicleId String?
   assignedVehicle   Vehicle?       @relation("DriverVehicle", fields: [assignedVehicleId], references: [id], onDelete: SetNull)
+  performanceRecords DriverPerformance[]
   
   resetOtp          String?
   resetOtpExpiry    DateTime?
@@ -238,4 +239,37 @@ model DriverEarning {
   @@index([driverId])
   @@index([date])
 }
+
+model DriverPerformance {
+  id               String   @id @default(uuid())
+  driverId         String
+  driver           User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  periodType       String   @default("WEEKLY") // WEEKLY, MONTHLY, YEARLY
+  weekLabel        String?  // e.g. "Week 38, 2026"
+  weekNumber       Int?
+  month            Int?
+  year             Int      @default(2026)
+  startDate        DateTime?
+  endDate          DateTime?
+  bookedHours      Float    @default(0.0)
+  actualHours      Float    @default(0.0)
+  performanceRatio Float    @default(0.0)
+  score            Float    @default(0.0)
+  status           String   @default("VERIFIED") // VERIFIED, PENDING
+  rewardEligible   Boolean  @default(false)
+  rewardGranted    Boolean  @default(false)
+  rewardTitle      String?
+  rewardAmount     Float?
+  verifiedBy       String?
+  verifiedAt       DateTime @default(now())
+  notes            String?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([driverId])
+  @@index([year, weekNumber])
+  @@index([periodType])
+}
+
 
