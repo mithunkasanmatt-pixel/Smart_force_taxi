@@ -860,22 +860,27 @@ Smart Force Taxi Fleet Safety & Operations`;
 }
 
 /**
- * Helper function to calculate exactly one month before a given expiry date, handling month boundary edge cases.
+ * Helper function to calculate exactly six months before a given expiry date, handling month boundary edge cases.
  */
-export function getOneMonthBefore(expiryDate: Date): Date {
+export function getSixMonthsBefore(expiryDate: Date): Date {
   const warningStart = new Date(expiryDate);
-  const targetMonth = warningStart.getMonth() - 1;
+  const targetMonth = warningStart.getMonth() - 6;
   warningStart.setMonth(targetMonth);
-  if (warningStart.getMonth() > (targetMonth < 0 ? 11 : targetMonth)) {
+  const expectedMonth = (targetMonth % 12 + 12) % 12;
+  if (warningStart.getMonth() !== expectedMonth) {
     warningStart.setDate(0);
   }
   return warningStart;
 }
 
+export function getOneMonthBefore(expiryDate: Date): Date {
+  return getSixMonthsBefore(expiryDate);
+}
+
 /**
- * Scans drivers and dispatches website & email notifications for licenses expiring within the 1-month warning period.
+ * Scans drivers and dispatches website & email notifications for licenses expiring within the 6-month warning period.
  * Daily notifications are sent twice: at 5:00 AM (morning slot) and at 5:00 PM (evening slot).
- * Notifications are sent ONLY during the one-month period before the license expiry date.
+ * Notifications are sent ONLY during the six-month period before the license expiry date.
  */
 export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, forceSend: boolean = false) {
   try {
@@ -918,10 +923,10 @@ export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, for
       if (!driver.licenseExpiry) continue;
 
       const expiryDate = new Date(driver.licenseExpiry);
-      const warningStartDate = getOneMonthBefore(expiryDate);
+      const warningStartDate = getSixMonthsBefore(expiryDate);
       warningStartDate.setHours(0, 0, 0, 0);
 
-      // Notifications must be sent ONLY during the one-month period before the license expiry date
+      // Notifications must be sent ONLY during the six-month period before the license expiry date
       const isInWarningPeriod = now >= warningStartDate && now <= expiryDate;
 
       if (isInWarningPeriod) {

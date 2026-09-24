@@ -4,6 +4,11 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 
+export interface TripActualHoursInput {
+  tripId: string;
+  actualHours: number;
+}
+
 export interface VerifyHoursInput {
   driverId: string;
   periodType: "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -13,6 +18,7 @@ export interface VerifyHoursInput {
   weekLabel?: string;
   bookedHours: number;
   actualHours: number;
+  tripActualHours?: TripActualHoursInput[];
   notes?: string;
 }
 
@@ -59,6 +65,17 @@ export async function verifyDriverHoursAction(input: VerifyHoursInput) {
 
     if (typeof input.actualHours !== "number" || input.actualHours < 0) {
       return { error: "Please enter a valid non-negative Actual Driving Hours value." };
+    }
+
+    if (input.tripActualHours && input.tripActualHours.length > 0) {
+      for (const t of input.tripActualHours) {
+        if (t.tripId && typeof t.actualHours === "number") {
+          await db.trip.update({
+            where: { id: t.tripId },
+            data: { actualHours: t.actualHours },
+          }).catch(() => {});
+        }
+      }
     }
 
     const periodType = input.periodType || "WEEKLY";
