@@ -186,6 +186,7 @@ model Trip {
   purpose           String
   status            TripStatus   @default(PENDING)
   notes             String?
+  actualHours       Float?
   
   assignedBy        String?      // DRIVER or ADMIN
   

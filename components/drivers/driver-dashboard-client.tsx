@@ -577,9 +577,10 @@ export function DriverDashboardClient({
   if (expiryDate) {
     const now = new Date();
     const warningStartDate = new Date(expiryDate);
-    const targetMonth = warningStartDate.getMonth() - 1;
+    const targetMonth = warningStartDate.getMonth() - 6;
     warningStartDate.setMonth(targetMonth);
-    if (warningStartDate.getMonth() > (targetMonth < 0 ? 11 : targetMonth)) {
+    const expectedMonth = (targetMonth % 12 + 12) % 12;
+    if (warningStartDate.getMonth() !== expectedMonth) {
       warningStartDate.setDate(0);
     }
     warningStartDate.setHours(0, 0, 0, 0);
