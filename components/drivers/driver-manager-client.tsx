@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useTransition, useEffect, useCallback, useMemo } from "react";
-import { User, Vehicle, Trip } from "@prisma/client";
+import { User, Vehicle, Trip, DriverPerformance } from "@prisma/client";
+import { PerformanceMatrixSection } from "./performance-matrix-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -54,10 +55,11 @@ interface DriverManagerProps {
   drivers: (User & { assignedVehicle?: Vehicle | null })[];
   bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
   vehicles: (Vehicle & { assignedDrivers?: User[] })[];
+  performanceRecords?: DriverPerformance[];
   currentUserName: string;
 }
 
-export function DriverManagerClient({ drivers, bookings, vehicles, currentUserName }: DriverManagerProps) {
+export function DriverManagerClient({ drivers, bookings, vehicles, performanceRecords = [], currentUserName }: DriverManagerProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
@@ -369,6 +371,57 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
   const activeDriver = useMemo(() => {
     return drivers.find((d) => d.id === selectedDriverId) || drivers[0] || null;
   }, [drivers, selectedDriverId]);
+
+  // Compute active driver performance matrix & leaderboard rank
+  const activeDriverPerformanceMatrix = useMemo(() => {
+    if (!activeDriver) return null;
+
+    const sorted = drivers
+      .map((d) => {
+        const rec = performanceRecords.find((r) => r.driverId === d.id);
+        let actual = rec ? rec.actualHours : 0;
+        let booked = rec ? rec.bookedHours : 0;
+        if (!rec) {
+          bookings
+            .filter((b) => b.driverId === d.id && b.status !== "CANCELLED")
+            .forEach((b) => {
+              const s = new Date(b.startTime).getTime();
+              const e = new Date(b.endTime).getTime();
+              if (e > s) {
+                const hrs = (e - s) / (1000 * 60 * 60);
+                booked += hrs;
+                if (b.actualHours != null) actual += b.actualHours;
+                else if (b.status === "COMPLETED" || e <= Date.now()) actual += hrs;
+              }
+            });
+        }
+        return {
+          driverId: d.id,
+          actualHours: Math.round(actual * 10) / 10,
+          bookedHours: Math.round(booked * 10) / 10,
+          score: rec?.score || 0,
+          record: rec || null,
+        };
+      })
+      .sort((a, b) => {
+        if (b.actualHours !== a.actualHours) return b.actualHours - a.actualHours;
+        if (b.bookedHours !== a.bookedHours) return b.bookedHours - a.bookedHours;
+        return b.score - a.score;
+      });
+
+    const rankIndex = sorted.findIndex((item) => item.driverId === activeDriver.id);
+    const rank = rankIndex >= 0 ? rankIndex + 1 : null;
+    const targetItem = rankIndex >= 0 ? sorted[rankIndex] : null;
+
+    return {
+      rank,
+      totalDrivers: drivers.length,
+      bookedHours: targetItem?.bookedHours || 0,
+      actualHours: targetItem?.actualHours || 0,
+      score: targetItem?.score || 0,
+      performanceRecord: targetItem?.record || null,
+    };
+  }, [activeDriver, drivers, bookings, performanceRecords]);
 
   // Filter bookings for selected driver
   const driverBookings = activeDriver
@@ -1075,6 +1128,11 @@ export function DriverManagerClient({ drivers, bookings, vehicles, currentUserNa
                   )}
                 </div>
               </div>
+
+              {/* Driver Performance Matrix Section */}
+              {activeDriverPerformanceMatrix && (
+                <PerformanceMatrixSection matrixData={activeDriverPerformanceMatrix} />
+              )}
 
               {/* Upcoming Slots */}
               <div className="border border-border rounded-xl bg-card overflow-hidden">

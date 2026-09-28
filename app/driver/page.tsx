@@ -37,7 +37,18 @@ export default async function DriverDashboard() {
   todayEnd.setDate(todayStart.getDate() + 1);
 
   // Fetch all required data in parallel for optimized portal performance
-  const [vehicles, bookings, activeTrip, assignedVehicle, logs, todayBookings, earnings] = await Promise.all([
+  const [
+    vehicles,
+    bookings,
+    activeTrip,
+    assignedVehicle,
+    logs,
+    todayBookings,
+    earnings,
+    allDrivers,
+    allTrips,
+    performanceRecords,
+  ] = await Promise.all([
     db.vehicle.findMany({
       orderBy: {
         name: "asc",
@@ -92,7 +103,63 @@ export default async function DriverDashboard() {
       where: { driverId: driver.id },
       orderBy: { date: "desc" },
     }),
+    db.user.findMany({
+      where: { role: "DRIVER" },
+    }),
+    db.trip.findMany({
+      where: { status: { notIn: ["CANCELLED"] } },
+    }),
+    db.driverPerformance.findMany({
+      orderBy: [{ year: "desc" }, { weekNumber: "desc" }, { createdAt: "desc" }],
+    }),
   ]);
+
+  // Compute driver rank and performance matrix
+  const sortedDrivers = allDrivers
+    .map((d) => {
+      const rec = performanceRecords.find((r) => r.driverId === d.id);
+      let actual = rec ? rec.actualHours : 0;
+      let booked = rec ? rec.bookedHours : 0;
+      if (!rec) {
+        allTrips
+          .filter((t) => t.driverId === d.id)
+          .forEach((t) => {
+            const s = new Date(t.startTime).getTime();
+            const e = new Date(t.endTime).getTime();
+            if (e > s) {
+              const hrs = (e - s) / (1000 * 60 * 60);
+              booked += hrs;
+              if (t.actualHours != null) actual += t.actualHours;
+              else if (t.status === "COMPLETED" || e <= Date.now()) actual += hrs;
+            }
+          });
+      }
+      return {
+        driverId: d.id,
+        actualHours: Math.round(actual * 10) / 10,
+        bookedHours: Math.round(booked * 10) / 10,
+        score: rec?.score || 0,
+        record: rec || null,
+      };
+    })
+    .sort((a, b) => {
+      if (b.actualHours !== a.actualHours) return b.actualHours - a.actualHours;
+      if (b.bookedHours !== a.bookedHours) return b.bookedHours - a.bookedHours;
+      return b.score - a.score;
+    });
+
+  const rankIndex = sortedDrivers.findIndex((item) => item.driverId === driver.id);
+  const rank = rankIndex >= 0 ? rankIndex + 1 : null;
+  const targetDriverItem = rankIndex >= 0 ? sortedDrivers[rankIndex] : null;
+
+  const matrixData = {
+    rank,
+    totalDrivers: allDrivers.length,
+    bookedHours: targetDriverItem?.bookedHours || 0,
+    actualHours: targetDriverItem?.actualHours || 0,
+    score: targetDriverItem?.score || 0,
+    performanceRecord: targetDriverItem?.record || null,
+  };
 
   return (
     <DriverPortalClient
@@ -105,6 +172,7 @@ export default async function DriverDashboard() {
       logs={logs}
       todayBookings={todayBookings}
       initialEarnings={earnings}
+      matrixData={matrixData}
     />
   );
 }

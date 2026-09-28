@@ -13,8 +13,8 @@ export default async function DriversPage() {
     redirect("/login");
   }
 
-  // Fetch all DRIVER users, bookings, and active vehicles in parallel for optimized performance
-  const [drivers, bookings, vehicles] = await Promise.all([
+  // Fetch all DRIVER users, bookings, active vehicles, and performance records in parallel
+  const [drivers, bookings, vehicles, performanceRecords] = await Promise.all([
     db.user.findMany({
       where: {
         role: "DRIVER",
@@ -43,6 +43,9 @@ export default async function DriversPage() {
         name: "asc",
       },
     }),
+    db.driverPerformance.findMany({
+      orderBy: [{ year: "desc" }, { weekNumber: "desc" }, { createdAt: "desc" }],
+    }),
   ]);
 
   return (
@@ -50,6 +53,7 @@ export default async function DriversPage() {
       drivers={drivers}
       bookings={bookings}
       vehicles={vehicles}
+      performanceRecords={performanceRecords}
       currentUserName={session.user.name || "Admin"}
     />
   );
