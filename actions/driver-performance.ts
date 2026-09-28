@@ -198,6 +198,55 @@ export async function grantDriverBonusRewardAction(input: GrantRewardInput) {
       return { error: "Performance record not found." };
     }
 
+    // Verify driver is in the top 3 on the leaderboard
+    const allDrivers = await db.user.findMany({ where: { role: "DRIVER" } });
+    const periodRecords = await db.driverPerformance.findMany({
+      where: {
+        periodType: existing.periodType,
+        year: existing.year,
+        weekNumber: existing.weekNumber ?? null,
+      },
+    });
+    const allTrips = await db.trip.findMany({ where: { status: { notIn: ["CANCELLED"] } } });
+
+    const sortedDrivers = allDrivers
+      .map((d) => {
+        const rec = periodRecords.find((r) => r.driverId === d.id);
+        let actual = rec ? rec.actualHours : 0;
+        let booked = rec ? rec.bookedHours : 0;
+        if (!rec) {
+          allTrips
+            .filter((t) => t.driverId === d.id)
+            .forEach((t) => {
+              const s = new Date(t.startTime).getTime();
+              const e = new Date(t.endTime).getTime();
+              if (e > s) {
+                const hrs = (e - s) / (1000 * 60 * 60);
+                booked += hrs;
+                if (t.actualHours != null) actual += t.actualHours;
+                else if (t.status === "COMPLETED" || e <= Date.now()) actual += hrs;
+              }
+            });
+        }
+        return {
+          driverId: d.id,
+          actualHours: actual,
+          bookedHours: booked,
+          score: rec?.score || 0,
+        };
+      })
+      .sort((a, b) => {
+        if (b.actualHours !== a.actualHours) return b.actualHours - a.actualHours;
+        if (b.bookedHours !== a.bookedHours) return b.bookedHours - a.bookedHours;
+        return b.score - a.score;
+      });
+
+    const rank = sortedDrivers.findIndex((item) => item.driverId === existing.driverId) + 1;
+
+    if (rank <= 0 || rank > 3) {
+      return { error: "Bonuses can only be provided to the top 3 drivers on the performance leaderboard." };
+    }
+
     const updated = await db.driverPerformance.update({
       where: { id: input.performanceId },
       data: {

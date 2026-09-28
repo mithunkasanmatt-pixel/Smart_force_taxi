@@ -7,7 +7,7 @@ import { AvailableVehiclesClient } from "./available-vehicles-client";
 import { WeeklyLogClient } from "./weekly-log-client";
 import { DriverEarningsClient } from "./driver-earnings-client";
 import { DriverProfileViewClient } from "./driver-profile-view-client";
-import { useTranslation } from "@/components/layout/language-provider";
+import { PerformanceMatrixSection, PerformanceMatrixData } from "./performance-matrix-section";
 import { User, Vehicle, Trip, WeeklyLog, DriverEarning, DriverSalary, PayrollRecord } from "@prisma/client";
 
 interface DriverPortalClientProps {
@@ -23,6 +23,7 @@ interface DriverPortalClientProps {
   logs: WeeklyLog[];
   todayBookings: Trip[];
   initialEarnings?: DriverEarning[];
+  matrixData?: PerformanceMatrixData;
 }
 
 export function DriverPortalClient({
@@ -35,6 +36,7 @@ export function DriverPortalClient({
   logs,
   todayBookings,
   initialEarnings = [],
+  matrixData,
 }: DriverPortalClientProps) {
   const { activeTab } = useDriverTab();
 
@@ -49,7 +51,11 @@ export function DriverPortalClient({
           bookings={bookings}
           activeTrip={activeTrip}
           todayBookings={todayBookings}
+          matrixData={matrixData}
         />
+      </div>
+      <div className={activeTab === "performance-matrix" ? "block" : "hidden"}>
+        {matrixData && <PerformanceMatrixSection matrixData={matrixData} />}
       </div>
       <div className={activeTab === "vehicles" ? "block" : "hidden"}>
         <AvailableVehiclesClient
@@ -76,6 +82,7 @@ export function DriverPortalClient({
       <div className={activeTab === "profile" ? "block" : "hidden"}>
         <DriverProfileViewClient
           driver={driver}
+          matrixData={matrixData}
         />
       </div>
     </>

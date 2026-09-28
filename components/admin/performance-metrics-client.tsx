@@ -1511,7 +1511,7 @@ export function PerformanceMetricsAdminClient({
                           Verify Hours
                         </Button>
 
-                        {item.isVerified && (
+                        {item.isVerified && rank <= 3 ? (
                           <Button
                             size="sm"
                             disabled={item.rewardGranted}
@@ -1531,7 +1531,11 @@ export function PerformanceMetricsAdminClient({
                             <Award className="h-3.5 w-3.5" />
                             {item.rewardGranted ? "Paid" : "Grant Bonus"}
                           </Button>
-                        )}
+                        ) : item.isVerified ? (
+                          <span className="text-[11px] font-medium text-muted-foreground px-2.5 py-1 rounded-md bg-muted/40 border border-border">
+                            Top 3 Only
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>

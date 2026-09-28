@@ -14,6 +14,8 @@ import { useTranslation } from "@/components/layout/language-provider";
 import { useRouter } from "next/navigation";
 
 
+import { PerformanceMatrixSection, PerformanceMatrixData } from "./performance-matrix-section";
+
 interface DriverDashboardClientProps {
   driver: User;
   activeShift: any | null;
@@ -22,6 +24,7 @@ interface DriverDashboardClientProps {
   bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
   activeTrip: (Trip & { vehicle: Vehicle }) | null;
   todayBookings: Trip[];
+  matrixData?: PerformanceMatrixData;
 }
 
 export function DriverDashboardClient({
@@ -32,6 +35,7 @@ export function DriverDashboardClient({
   bookings,
   activeTrip,
   todayBookings,
+  matrixData,
 }: DriverDashboardClientProps) {
   const { t } = useTranslation();
   const [isPending, startTransition] = useTransition();

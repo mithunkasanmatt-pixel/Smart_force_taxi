@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useSearchParams, usePathname, useRouter } from "next/navigation";
 
-export type DriverTab = "dashboard" | "vehicles" | "weekly-log" | "earnings" | "profile";
+export type DriverTab = "dashboard" | "performance-matrix" | "vehicles" | "weekly-log" | "earnings" | "profile";
 
 interface DriverTabContextProps {
   activeTab: DriverTab;
@@ -16,46 +16,52 @@ export function DriverTabProvider({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
-  const getTabFromUrl = (path: string, params: URLSearchParams): DriverTab => {
-    if (path === "/driver/available-vehicles" || params.get("tab") === "vehicles") {
+  const getTabFromUrl = (path: string, params: any): DriverTab => {
+    if (path === "/driver/performance" || path === "/driver/performance-matrix" || params?.get("tab") === "performance" || params?.get("tab") === "performance-matrix") {
+      return "performance-matrix";
+    }
+    if (path === "/driver/available-vehicles" || params?.get("tab") === "vehicles") {
       return "vehicles";
     }
-    if (path === "/driver/weekly-log" || params.get("tab") === "weekly-log") {
+    if (path === "/driver/weekly-log" || params?.get("tab") === "weekly-log") {
       return "weekly-log";
     }
-    if (path === "/driver/earnings" || params.get("tab") === "earnings") {
+    if (path === "/driver/earnings" || params?.get("tab") === "earnings") {
       return "earnings";
     }
-    if (path === "/driver/profile" || params.get("tab") === "profile") {
+    if (path === "/driver/profile" || params?.get("tab") === "profile") {
       return "profile";
     }
     return "dashboard";
   };
 
-  const [activeTab, setActiveTabState] = useState<DriverTab>(() => {
-    if (typeof window !== "undefined") {
-      return getTabFromUrl(window.location.pathname, new URLSearchParams(window.location.search));
-    }
-    return "dashboard";
-  });
+  const [activeTab, setActiveTabState] = useState<DriverTab>(() =>
+    getTabFromUrl(pathname, searchParams)
+  );
 
-  // Sync state with URL on initial mount and when popstate (browser back/forward) occurs
+  // Keep state in sync with route navigation
+  useEffect(() => {
+    const currentTab = getTabFromUrl(pathname, searchParams);
+    setActiveTabState(currentTab);
+  }, [pathname, searchParams]);
+
   useEffect(() => {
     const handlePopState = () => {
       const currentParams = new URLSearchParams(window.location.search);
       setActiveTabState(getTabFromUrl(window.location.pathname, currentParams));
     };
 
-    handlePopState();
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [pathname, searchParams]);
+  }, []);
 
   const setActiveTab = (tab: DriverTab) => {
     setActiveTabState(tab);
 
     let targetPath = "/driver";
-    if (tab === "vehicles") {
+    if (tab === "performance-matrix") {
+      targetPath = "/driver/performance";
+    } else if (tab === "vehicles") {
       targetPath = "/driver/available-vehicles";
     } else if (tab === "weekly-log") {
       targetPath = "/driver/weekly-log";

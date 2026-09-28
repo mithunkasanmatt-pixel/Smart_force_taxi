@@ -12,11 +12,14 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
+import { PerformanceMatrixSection, PerformanceMatrixData } from "./performance-matrix-section";
+
 interface DriverProfileViewProps {
   driver: User;
+  matrixData?: PerformanceMatrixData;
 }
 
-export function DriverProfileViewClient({ driver }: DriverProfileViewProps) {
+export function DriverProfileViewClient({ driver, matrixData }: DriverProfileViewProps) {
   const [showSsn, setShowSsn] = useState(false);
 
   // Calculate License Expiry Days & Warning Period
@@ -195,6 +198,9 @@ export function DriverProfileViewClient({ driver }: DriverProfileViewProps) {
           </div>
         </div>
       </div>
+
+      {/* Driver Performance Matrix Section */}
+      {matrixData && <PerformanceMatrixSection matrixData={matrixData} />}
     </div>
   );
 }
