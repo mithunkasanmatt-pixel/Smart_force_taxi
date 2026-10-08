@@ -30,6 +30,17 @@ export default async function DriverDashboard() {
     redirect("/login?error=SessionExpired");
   }
 
+  // Check driver license expiry date
+  if (driver.licenseExpiry && new Date() > new Date(driver.licenseExpiry)) {
+    if (driver.status !== "OFFLINE") {
+      await db.user.update({
+        where: { id: driver.id },
+        data: { status: "OFFLINE" },
+      });
+    }
+    redirect("/login?error=LicenseExpired");
+  }
+
   // Calculate today's time range for filtering bookings
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);

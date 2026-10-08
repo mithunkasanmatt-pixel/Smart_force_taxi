@@ -51,6 +51,7 @@ export function DriverPortalClient({
           bookings={bookings}
           activeTrip={activeTrip}
           todayBookings={todayBookings}
+          logs={logs}
           matrixData={matrixData}
         />
       </div>

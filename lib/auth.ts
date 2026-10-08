@@ -32,6 +32,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             return null;
           }
 
+          // Check if driver license is expired
+          if (user.role === "DRIVER" && user.licenseExpiry) {
+            if (new Date() > new Date(user.licenseExpiry)) {
+              if (user.status !== "OFFLINE") {
+                await db.user.update({
+                  where: { id: user.id },
+                  data: { status: "OFFLINE" },
+                });
+              }
+              return null;
+            }
+          }
+
           return {
             id: user.id,
             email: user.email || '',
