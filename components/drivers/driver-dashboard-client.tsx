@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useTransition, useCallback } from "react";
-import { User, Vehicle, Trip } from "@prisma/client";
+import { User, Vehicle, Trip, WeeklyLog } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2, Headph
 import { cn } from "@/utils/cn";
 import { useTranslation } from "@/components/layout/language-provider";
 import { useRouter } from "next/navigation";
-
+import { isWeeklyLogSubmitted } from "@/utils/weekly-log-utils";
 
 import { PerformanceMatrixSection, PerformanceMatrixData } from "./performance-matrix-section";
 
@@ -24,6 +24,7 @@ interface DriverDashboardClientProps {
   bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
   activeTrip: (Trip & { vehicle: Vehicle }) | null;
   todayBookings: Trip[];
+  logs?: WeeklyLog[];
   matrixData?: PerformanceMatrixData;
 }
 
@@ -35,6 +36,7 @@ export function DriverDashboardClient({
   bookings,
   activeTrip,
   todayBookings,
+  logs = [],
   matrixData,
 }: DriverDashboardClientProps) {
   const { t } = useTranslation();
@@ -116,14 +118,15 @@ export function DriverDashboardClient({
     }
     setWindowDates(list);
 
-    // Sunday Popup check
-    if (new Date().getDay() === 0) {
-      const dismissed = sessionStorage.getItem("sunday_popup_dismissed");
+    // Weekly log submission check (Monday to Monday window)
+    const isLogSubmittedThisWeek = isWeeklyLogSubmitted(logs);
+    if (!isLogSubmittedThisWeek) {
+      const dismissed = sessionStorage.getItem("weekly_log_popup_dismissed");
       if (!dismissed) {
         setShowSundayPopup(true);
       }
     }
-  }, [vehicles]);
+  }, [vehicles, logs]);
 
   // When selectedDate changes, update window to display 3 days before and 3 days after selected date
   useEffect(() => {
@@ -598,8 +601,31 @@ export function DriverDashboardClient({
     }
   }
 
+  const isLogSubmittedThisWeek = isWeeklyLogSubmitted(logs);
+
   return (
     <div className="mx-auto max-w-7xl w-full space-y-6">
+      {/* Weekly Log Reminder Banner (Monday to Monday Window) */}
+      {!isLogSubmittedThisWeek && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-6 w-6 shrink-0 mt-0.5 text-amber-500 animate-pulse" />
+            <div className="space-y-1">
+              <h4 className="font-bold text-sm">Weekly Work Log Required</h4>
+              <p className="text-xs text-amber-700/90 dark:text-amber-300">
+                Your weekly work screenshot log for this week (Monday to Monday) has not been submitted yet. Please upload your log statement.
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={() => router.push("/driver/weekly-log")}
+            className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs shrink-0 self-end sm:self-center"
+          >
+            Upload Weekly Log Now
+          </Button>
+        </div>
+      )}
+
       {/* License Expiry Notification Banner */}
       {isExpired && (
         <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 flex items-start gap-3 shadow-sm animate-pulse">
@@ -1363,25 +1389,39 @@ export function DriverDashboardClient({
         </Dialog>
       )}
 
-      {/* Sunday Upload Reminder Dialog */}
-      {showSundayPopup && (
-      <Dialog isOpen={showSundayPopup} onClose={() => setShowSundayPopup(false)} title="Weekly Log Screenshot Reminder">
+      {/* Weekly Log Upload Reminder Dialog */}
+      {showSundayPopup && !isLogSubmittedThisWeek && (
+      <Dialog 
+        isOpen={showSundayPopup} 
+        onClose={() => {
+          sessionStorage.setItem("weekly_log_popup_dismissed", "true");
+          setShowSundayPopup(false);
+        }} 
+        title="Weekly Log Screenshot Reminder"
+      >
         <div className="space-y-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="h-6 w-6 text-amber-500 shrink-0 mt-0.5 animate-bounce" />
             <div>
-              <h4 className="font-bold text-foreground">Weekly Screenshot Due Today!</h4>
+              <h4 className="font-bold text-foreground">Weekly Screenshot Log Required</h4>
               <p className="text-xs text-muted-foreground mt-1">
-                Today is Sunday. Please remember to capture your weekly work statement and upload the screenshot inside the Weekly Log portal.
+                Your weekly work statement screenshot for this week (Monday to Monday) has not been submitted yet. Please capture and upload your work screenshot log.
               </p>
             </div>
           </div>
           <div className="flex justify-end gap-2 border-t border-border pt-4 mt-6">
-            <Button variant="outline" onClick={() => setShowSundayPopup(false)}>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                sessionStorage.setItem("weekly_log_popup_dismissed", "true");
+                setShowSundayPopup(false);
+              }}
+            >
               Remind Me Later
             </Button>
             <Button 
               onClick={() => {
+                sessionStorage.setItem("weekly_log_popup_dismissed", "true");
                 setShowSundayPopup(false);
                 router.push("/driver/weekly-log");
               }} 

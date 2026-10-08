@@ -35,6 +35,15 @@ export default function LoginPage() {
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t } = useTranslation();
 
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("error") === "LicenseExpired") {
+        setError("Your taxi license has expired. Your account has been deactivated and login is disabled.");
+      }
+    }
+  }, []);
+
   // Forgot Password flow states
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetStep, setResetStep] = useState(1);

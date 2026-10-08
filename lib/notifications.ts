@@ -874,32 +874,49 @@ export function getSixMonthsBefore(expiryDate: Date): Date {
 }
 
 export function getOneMonthBefore(expiryDate: Date): Date {
-  return getSixMonthsBefore(expiryDate);
+  const warningStart = new Date(expiryDate);
+  const targetMonth = warningStart.getMonth() - 1;
+  warningStart.setMonth(targetMonth);
+  const expectedMonth = (targetMonth % 12 + 12) % 12;
+  if (warningStart.getMonth() !== expectedMonth) {
+    warningStart.setDate(0);
+  }
+  return warningStart;
 }
 
 /**
- * Scans drivers and dispatches website & email notifications for licenses expiring within the 6-month warning period.
- * Daily notifications are sent twice: at 5:00 AM (morning slot) and at 5:00 PM (evening slot).
- * Notifications are sent ONLY during the six-month period before the license expiry date.
+ * Scans drivers and dispatches website & email notifications for licenses expiring soon:
+ * 1. 6 months to 1 month before expiry: Once daily at 9:00 AM.
+ * 2. 1 month before expiry: 3 times daily (9:00 AM, 1:00 PM, 9:00 PM).
+ * 3. Once expired: Automatically deactivates the driver account and blocks future notifications.
  */
 export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, forceSend: boolean = false) {
   try {
     const { db } = await import("@/lib/db");
     const now = new Date();
+    const hours = now.getHours();
 
-    // Define 5:00 AM and 5:00 PM time thresholds for today
-    const today5AM = new Date(now);
-    today5AM.setHours(5, 0, 0, 0);
+    // Determine current notification time slot:
+    // Slot 1 (9:00 AM): 09:00 to 12:59
+    // Slot 2 (1:00 PM): 13:00 to 20:59
+    // Slot 3 (9:00 PM): 21:00 to 23:59 or 00:00 to 08:59
+    let currentSlot = "";
+    const slotStartTime = new Date(now);
 
-    const today5PM = new Date(now);
-    today5PM.setHours(17, 0, 0, 0);
-
-    const isMorningSlot = now >= today5AM && now < today5PM;
-    const isEveningSlot = now >= today5PM;
-
-    // If current time is before 5:00 AM today and forceSend is false, skip dispatching scheduled notifications
-    if (!forceSend && !isMorningSlot && !isEveningSlot) {
-      return { success: true, notifiedCount: 0, message: "Before initial 5:00 AM notification window." };
+    if (hours >= 9 && hours < 13) {
+      currentSlot = "9AM";
+      slotStartTime.setHours(9, 0, 0, 0);
+    } else if (hours >= 13 && hours < 21) {
+      currentSlot = "1PM";
+      slotStartTime.setHours(13, 0, 0, 0);
+    } else if (hours >= 21 || hours < 9) {
+      currentSlot = "9PM";
+      if (hours >= 21) {
+        slotStartTime.setHours(21, 0, 0, 0);
+      } else {
+        slotStartTime.setDate(slotStartTime.getDate() - 1);
+        slotStartTime.setHours(21, 0, 0, 0);
+      }
     }
 
     const whereCondition: any = {
@@ -918,84 +935,276 @@ export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, for
     });
 
     let notifiedCount = 0;
+    let deactivatedCount = 0;
 
     for (const driver of drivers) {
       if (!driver.licenseExpiry) continue;
 
       const expiryDate = new Date(driver.licenseExpiry);
+
+      // 1. If driver license has expired, automatically deactivate driver account
+      if (now > expiryDate) {
+        if (driver.status !== "OFFLINE") {
+          await db.user.update({
+            where: { id: driver.id },
+            data: { status: "OFFLINE" },
+          });
+          deactivatedCount++;
+        }
+        continue; // Do not send pre-expiry reminder emails once expired
+      }
+
       const warningStartDate = getSixMonthsBefore(expiryDate);
       warningStartDate.setHours(0, 0, 0, 0);
 
-      // Notifications must be sent ONLY during the six-month period before the license expiry date
-      const isInWarningPeriod = now >= warningStartDate && now <= expiryDate;
+      const oneMonthStartDate = getOneMonthBefore(expiryDate);
+      oneMonthStartDate.setHours(0, 0, 0, 0);
 
-      if (isInWarningPeriod) {
-        // Prevent duplicate notification for the current slot (5:00 AM slot vs 5:00 PM slot) unless forceSend is true
-        if (!forceSend) {
-          const slotNotificationCount = await db.notification.count({
-            where: {
-              userId: driver.id,
-              type: "LICENSE_EXPIRY",
-              createdAt: isMorningSlot
-                ? { gte: today5AM, lt: today5PM }
-                : { gte: today5PM },
-            },
-          });
+      // Check range:
+      // Range A: 6 months to 1 month before expiry (9:00 AM slot ONLY)
+      // Range B: 1 month before expiry up to expiry date (9:00 AM, 1:00 PM, 9:00 PM slots)
+      const isIn6MonthWindow = now >= warningStartDate && now < oneMonthStartDate;
+      const isIn1MonthWindow = now >= oneMonthStartDate && now <= expiryDate;
 
-          if (slotNotificationCount > 0) {
-            continue; // Already notified during this 5:00 AM or 5:00 PM slot today
-          }
-        }
+      if (!isIn6MonthWindow && !isIn1MonthWindow) {
+        // More than 6 months before expiry
+        continue;
+      }
 
-        const diffTime = expiryDate.getTime() - now.getTime();
-        const daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      // If in 6-month to 1-month window, send ONLY during the 9:00 AM slot
+      if (isIn6MonthWindow && currentSlot !== "9AM" && !forceSend) {
+        continue;
+      }
 
-        const formattedExpiryDate = expiryDate.toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        });
-
-        const title = "Taxi License Expiring Soon";
-        const message = `Your taxi license (No. ${driver.licenseNumber || "N/A"}) will expire in ${daysRemaining} day(s) on ${formattedExpiryDate}. Please renew it promptly to prevent disruption to your driving duties.`;
-
-        // 1. Create In-Website Notification
-        await db.notification.create({
-          data: {
+      // Deduplication check for current time slot unless forceSend is true
+      if (!forceSend) {
+        const slotNotificationCount = await db.notification.count({
+          where: {
             userId: driver.id,
-            title,
-            message,
             type: "LICENSE_EXPIRY",
-            isRead: false,
+            createdAt: {
+              gte: slotStartTime,
+            },
           },
         });
 
-        // 2. Send Email Notification
-        if (driver.email) {
-          await sendLicenseExpiryEmail(
-            driver.email,
-            driver.name,
-            driver.licenseNumber || "",
-            expiryDate,
-            daysRemaining
-          );
+        if (slotNotificationCount > 0) {
+          continue; // Already notified during this scheduled slot
         }
-
-        // 3. Update lastExpiryNotifiedAt timestamp
-        await db.user.update({
-          where: { id: driver.id },
-          data: { lastExpiryNotifiedAt: now },
-        });
-
-        notifiedCount++;
       }
+
+      const diffTime = expiryDate.getTime() - now.getTime();
+      const daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+
+      const formattedExpiryDate = expiryDate.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+      const title = "Taxi License Expiring Soon";
+      const message = `Your taxi license (No. ${driver.licenseNumber || "N/A"}) will expire in ${daysRemaining} day(s) on ${formattedExpiryDate}. Please renew it promptly to prevent disruption to your driving duties.`;
+
+      // 1. Create In-Website Notification
+      await db.notification.create({
+        data: {
+          userId: driver.id,
+          title,
+          message,
+          type: "LICENSE_EXPIRY",
+          isRead: false,
+        },
+      });
+
+      // 2. Send Email Notification
+      if (driver.email) {
+        await sendLicenseExpiryEmail(
+          driver.email,
+          driver.name,
+          driver.licenseNumber || "",
+          expiryDate,
+          daysRemaining
+        );
+      }
+
+      // 3. Update lastExpiryNotifiedAt timestamp
+      await db.user.update({
+        where: { id: driver.id },
+        data: { lastExpiryNotifiedAt: now },
+      });
+
+      notifiedCount++;
     }
 
-    return { success: true, notifiedCount };
+    return { success: true, notifiedCount, deactivatedCount, slot: currentSlot };
   } catch (error: any) {
     console.error("Error running checkAndNotifyLicenseExpiry:", error);
     return { error: error.message || "Failed to check license expiry notifications" };
   }
 }
+
+/**
+ * Dispatches email & in-app reminders to drivers who have not submitted their weekly log
+ * for the Monday-to-Monday week window.
+ * Scheduled windows: 9:00 AM, 2:00 PM, 9:00 PM.
+ */
+export async function sendWeeklyLogReminderEmails(forceSend: boolean = false) {
+  try {
+    const { db } = await import("@/lib/db");
+    const { getWeeklyLogWindow } = await import("@/utils/weekly-log-utils");
+
+    const now = new Date();
+    const hours = now.getHours();
+
+    // Determine current time slot window:
+    // Slot 1 (9:00 AM): 09:00 to 13:59
+    // Slot 2 (2:00 PM): 14:00 to 20:59
+    // Slot 3 (9:00 PM): 21:00 to 23:59 or 00:00 to 08:59
+    let currentSlot = "";
+    const slotStartTime = new Date(now);
+
+    if (hours >= 9 && hours < 14) {
+      currentSlot = "9AM";
+      slotStartTime.setHours(9, 0, 0, 0);
+    } else if (hours >= 14 && hours < 21) {
+      currentSlot = "2PM";
+      slotStartTime.setHours(14, 0, 0, 0);
+    } else if (hours >= 21 || hours < 9) {
+      currentSlot = "9PM";
+      if (hours >= 21) {
+        slotStartTime.setHours(21, 0, 0, 0);
+      } else {
+        // Early morning hours before 9 AM map to the 9 PM slot of previous day
+        slotStartTime.setDate(slotStartTime.getDate() - 1);
+        slotStartTime.setHours(21, 0, 0, 0);
+      }
+    }
+
+    const { startOfWeek, endOfWeek } = getWeeklyLogWindow(now);
+
+    // Fetch all drivers
+    const drivers = await db.user.findMany({
+      where: {
+        role: "DRIVER",
+      },
+      include: {
+        weeklyLogs: {
+          where: {
+            uploadedAt: {
+              gte: startOfWeek,
+              lte: endOfWeek,
+            },
+          },
+        },
+      },
+    });
+
+    let sentCount = 0;
+    let skippedCount = 0;
+    const from = process.env.SMTP_FROM || `"Smart Force Taxi" <noreply@smartforcetaxi.com>`;
+    const portalUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/login`;
+
+    for (const driver of drivers) {
+      // If driver already submitted log for this Monday-to-Monday week, skip
+      if (driver.weeklyLogs && driver.weeklyLogs.length > 0) {
+        skippedCount++;
+        continue;
+      }
+
+      // Check slot deduplication unless forceSend is true
+      if (!forceSend) {
+        const alreadyNotified = await db.notification.findFirst({
+          where: {
+            userId: driver.id,
+            type: "WEEKLY_LOG_REMINDER",
+            createdAt: {
+              gte: slotStartTime,
+            },
+          },
+        });
+
+        if (alreadyNotified) {
+          continue; // Skip if already notified in this scheduled slot
+        }
+      }
+
+      const formattedStart = startOfWeek.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const formattedEnd = endOfWeek.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+      const subject = `[REMINDER] Weekly Work Log Submission Due - Smart Force Taxi`;
+      const text = `Hello ${driver.name},
+
+This is a reminder that your weekly work log screenshot for the week (${formattedStart} - ${formattedEnd}) has not been submitted yet.
+
+If you have already submitted your weekly log, please ignore this email. Otherwise, please log in to the Driver Portal and upload your weekly screenshot as soon as possible.
+
+Log in here: ${portalUrl}
+
+Best regards,
+Smart Force Taxi Operations Team`;
+
+      const html = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; border-radius: 8px;">
+        <div style="background-color: #f59e0b; padding: 15px; border-radius: 6px; text-align: center; color: white;">
+          <h2 style="margin: 0; font-size: 20px;">Weekly Log Submission Reminder</h2>
+        </div>
+        <div style="padding: 20px 0;">
+          <p style="font-size: 16px; color: #18181b;">Hello <strong>${driver.name}</strong>,</p>
+          <p style="font-size: 15px; color: #3f3f46; line-height: 1.5;">
+            Our records indicate that your weekly work screenshot log for the week of <strong>${formattedStart} to ${formattedEnd}</strong> has not been uploaded yet.
+          </p>
+          <div style="background-color: #fffbeb; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+            <h4 style="margin: 0 0 8px 0; color: #92400e;">Action Required:</h4>
+            <p style="margin: 0; color: #78350f; font-size: 14px;">
+              Please capture your weekly work statement screenshot and submit it through the Driver Portal.
+            </p>
+          </div>
+          <p style="text-align: center; margin-top: 25px;">
+            <a href="${portalUrl}" style="background-color: #f59e0b; color: white; padding: 12px 24px; font-weight: bold; text-decoration: none; border-radius: 6px; display: inline-block;">
+              Go to Driver Portal
+            </a>
+          </p>
+        </div>
+        <p style="font-size: 12px; color: #a1a1aa; margin-top: 30px; border-top: 1px solid #e4e4e7; padding-top: 15px;">
+          This is an automated operational reminder. Please do not reply directly to this email.
+        </p>
+      </div>`;
+
+      // 1. Send Email Notification
+      if (driver.email) {
+        try {
+          await transporter.sendMail({
+            from,
+            to: driver.email,
+            subject,
+            text,
+            html,
+          });
+          console.log(`Weekly log reminder email sent to driver: ${driver.email}`);
+        } catch (err) {
+          console.error(`Failed to send weekly log reminder email to ${driver.email}:`, err);
+        }
+      }
+
+      // 2. Create In-App Notification
+      await db.notification.create({
+        data: {
+          userId: driver.id,
+          title: "Weekly Log Submission Reminder",
+          message: `Your weekly log for ${formattedStart} - ${formattedEnd} is pending. Please upload your weekly screenshot.`,
+          type: "WEEKLY_LOG_REMINDER",
+          isRead: false,
+        },
+      });
+
+      sentCount++;
+    }
+
+    return { success: true, sentCount, skippedCount, slot: currentSlot };
+  } catch (error: any) {
+    console.error("Error sending weekly log reminder emails:", error);
+    return { error: error.message || "Failed to send weekly log reminder emails" };
+  }
+}
+
 
 

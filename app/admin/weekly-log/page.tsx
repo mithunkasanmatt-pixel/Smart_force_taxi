@@ -13,14 +13,24 @@ export default async function AdminWeeklyLogPage() {
     redirect("/login");
   }
 
-  const logs = await db.weeklyLog.findMany({
-    include: {
-      driver: true,
-    },
-    orderBy: {
-      uploadedAt: "desc",
-    },
-  });
+  const [drivers, logs] = await Promise.all([
+    db.user.findMany({
+      where: {
+        role: "DRIVER",
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+    db.weeklyLog.findMany({
+      include: {
+        driver: true,
+      },
+      orderBy: {
+        uploadedAt: "desc",
+      },
+    }),
+  ]);
 
-  return <WeeklyLogAdminClient initialLogs={logs} />;
+  return <WeeklyLogAdminClient drivers={drivers} initialLogs={logs} />;
 }

@@ -69,6 +69,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
   const [replaceDriverId, setReplaceDriverId] = useState<string>("");
   const [sendingNotifId, setSendingNotifId] = useState<string | null>(null);
   const [notifSuccess, setNotifSuccess] = useState<string | null>(null);
+  const [showDriverAccountPassword, setShowDriverAccountPassword] = useState(true);
 
   useEffect(() => {
     setReplaceDriverId("");
@@ -273,7 +274,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
       licenseExpiry: formatDateStr(activeDriver.licenseExpiry),
       experience: activeDriver.experience || 0,
       emergencyContact: activeDriver.emergencyContact || "",
-      password: "",
+      password: activeDriver.password || "",
       profilePicture: activeDriver.profilePicture || "",
     });
     setEditImagePreview(activeDriver.profilePicture || null);
@@ -912,6 +913,41 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
                     {notifSuccess}
                   </div>
                 )}
+
+                {/* Driver Account Credentials (Username & Password) */}
+                <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-primary flex items-center gap-1.5 uppercase tracking-wider">
+                      <Lock className="h-4 w-4" /> Driver Account Login Credentials
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowDriverAccountPassword(!showDriverAccountPassword)}
+                      className="h-7 text-[11px] font-bold text-muted-foreground hover:text-foreground flex items-center gap-1"
+                    >
+                      {showDriverAccountPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      {showDriverAccountPassword ? "Hide Password" : "Show Password"}
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+                    <div>
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase block">Username (Email)</span>
+                      <span className="font-mono font-bold text-foreground text-sm">{activeDriver.email}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase block">Employee ID</span>
+                      <span className="font-mono font-bold text-foreground text-sm">{activeDriver.employeeId}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase block">Password</span>
+                      <span className="font-mono font-bold text-foreground text-sm tracking-wider">
+                        {showDriverAccountPassword ? (activeDriver.password || "N/A") : "••••••••••••"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Mandatory Driver Profile Details Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 p-4 rounded-xl bg-muted/20 border border-border/60 text-xs">

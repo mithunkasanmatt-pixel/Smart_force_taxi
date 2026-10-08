@@ -24,12 +24,17 @@ export function isWeakPassword(password: string): boolean {
 }
 
 export function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return `${salt}:${hash}`;
+  // Passwords are stored in readable plain text form so admins can view them
+  return password;
 }
 
 export function verifyPassword(password: string, storedHash: string): boolean {
+  if (!password || !storedHash) return false;
+  
+  // Direct readable plain text check
+  if (password === storedHash) return true;
+
+  // Fallback for legacy hashed passwords
   try {
     const [salt, hash] = storedHash.split(':');
     if (!salt || !hash) return false;

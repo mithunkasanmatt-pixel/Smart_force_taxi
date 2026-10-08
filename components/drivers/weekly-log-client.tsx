@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, CheckCircle2, UploadCloud, Calendar, Eye, Clock } from "lucide-react";
 import { uploadWeeklyScreenshotAction, getDriverWeeklyLogsAction } from "@/actions/weekly-logs";
 import { useTranslation } from "@/components/layout/language-provider";
+import { isWeeklyLogSubmitted } from "@/utils/weekly-log-utils";
 
 interface WeeklyLogClientProps {
   driver: User;
@@ -24,18 +25,12 @@ export function WeeklyLogClient({ driver, initialLogs }: WeeklyLogClientProps) {
   const [userMessage, setUserMessage] = useState("");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const isSunday = new Date().getDay() === 0;
-
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Check if driver has uploaded a log today
-  const hasUploadedToday = logs.some((log) => {
-    const uploadDate = new Date(log.uploadedAt).toDateString();
-    const todayDate = new Date().toDateString();
-    return uploadDate === todayDate;
-  });
+  // Check if driver has uploaded a log for the Monday-to-Monday week window
+  const hasSubmittedThisWeek = isWeeklyLogSubmitted(logs);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -104,28 +99,26 @@ export function WeeklyLogClient({ driver, initialLogs }: WeeklyLogClientProps) {
         </p>
       </div>
 
-      {/* Sunday Notification Banner */}
-      {isSunday && (
-        <div className={`p-4 rounded-xl border flex items-start gap-3 ${
-          hasUploadedToday 
-            ? "bg-green-500/10 border-green-500/20 text-green-500" 
-            : "bg-amber-500/10 border-amber-500/20 text-amber-500 animate-pulse"
-        }`}>
-          {hasUploadedToday ? (
-            <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
-          ) : (
-            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-          )}
-          <div>
-            <h4 className="font-bold">{isSunday ? "Sunday Upload Reminder" : "Weekly Report Status"}</h4>
-            <p className="text-xs mt-1">
-              {hasUploadedToday 
-                ? "Excellent! You have successfully submitted your weekly work screenshot for today."
-                : "Today is Sunday. Please capture your weekly work statement and upload it below before the end of the day."}
-            </p>
-          </div>
+      {/* Weekly Log Status Banner (Monday to Monday Window) */}
+      <div className={`p-4 rounded-xl border flex items-start gap-3 ${
+        hasSubmittedThisWeek 
+          ? "bg-green-500/10 border-green-500/20 text-green-500" 
+          : "bg-amber-500/10 border-amber-500/20 text-amber-500 animate-pulse"
+      }`}>
+        {hasSubmittedThisWeek ? (
+          <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
+        ) : (
+          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+        )}
+        <div>
+          <h4 className="font-bold">{hasSubmittedThisWeek ? "Weekly Log Submitted" : "Weekly Log Submission Required"}</h4>
+          <p className="text-xs mt-1">
+            {hasSubmittedThisWeek 
+              ? "Excellent! You have successfully submitted your weekly work screenshot for this week (Monday to Monday)."
+              : "You have not submitted your weekly work screenshot for this week (Monday to Monday). Please capture your weekly work statement and upload it below."}
+          </p>
         </div>
-      )}
+      </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Upload Screenshot Panel */}
