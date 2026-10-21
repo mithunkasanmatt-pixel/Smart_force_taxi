@@ -1,5 +1,2 @@
-import { redirect } from "next/navigation";
+export { default, revalidate } from "../page";
 
-export default function DriverPerformancePage() {
-  redirect("/driver?tab=performance-matrix");
-}

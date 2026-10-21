@@ -340,7 +340,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
     setSendingNotifId(driverId);
     setNotifSuccess(null);
     try {
-      const res = await fetch(`/api/notifications/check-expiry?driverId=${driverId}`);
+      const res = await fetch(`/api/notifications/check-expiry?driverId=${driverId}&force=true`);
       if (res.ok) {
         setNotifSuccess("License expiry notification (email & website) dispatched successfully!");
         setTimeout(() => setNotifSuccess(null), 4000);

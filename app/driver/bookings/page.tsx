@@ -1,5 +1,1 @@
-import { redirect } from "next/navigation";
-
-export default function DriverBookingsPage() {
-  redirect("/driver?tab=bookings");
-}
+export { default, revalidate } from "../page";

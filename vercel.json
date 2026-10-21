@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/notifications/check-expiry",
+      "schedule": "0 9,12,18 * * *"
+    },
+    {
+      "path": "/api/notifications/daily",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/notifications/weekly-log-reminder",
+      "schedule": "0 9,14,21 * * 1"
+    }
+  ]
+}

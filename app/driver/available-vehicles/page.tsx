@@ -1,6 +1,3 @@
-import { redirect } from "next/navigation";
+export { default, revalidate } from "../page";
 
-export default function AvailableVehiclesPage() {
-  redirect("/driver?tab=vehicles");
-}
 
