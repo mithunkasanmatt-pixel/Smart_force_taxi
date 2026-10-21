@@ -59,6 +59,7 @@ export default async function DriverDashboard() {
     allDrivers,
     allTrips,
     performanceRecords,
+    driverBookings,
   ] = await Promise.all([
     db.vehicle.findMany({
       orderBy: {
@@ -123,6 +124,14 @@ export default async function DriverDashboard() {
     db.driverPerformance.findMany({
       orderBy: [{ year: "desc" }, { weekNumber: "desc" }, { createdAt: "desc" }],
     }),
+    db.trip.findMany({
+      where: { driverId: driver.id },
+      include: {
+        driver: true,
+        vehicle: true,
+      },
+      orderBy: { startTime: "desc" },
+    }),
   ]);
 
   // Compute driver rank and performance matrix
@@ -184,6 +193,7 @@ export default async function DriverDashboard() {
       todayBookings={todayBookings}
       initialEarnings={earnings}
       matrixData={matrixData}
+      driverBookings={driverBookings}
     />
   );
 }

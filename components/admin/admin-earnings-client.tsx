@@ -35,6 +35,12 @@ type DriverEarningWithDriver = DriverEarning & {
   driver: User;
 };
 
+const formatDate = (dateInput: Date | string) => {
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
 interface AdminEarningsClientProps {
   drivers: User[];
   initialEarnings: DriverEarningWithDriver[];
@@ -338,8 +344,8 @@ export function AdminEarningsClient({ drivers, initialEarnings }: AdminEarningsC
                 <tbody className="divide-y divide-border/40">
                   {filteredEarnings.map((item) => (
                     <tr key={item.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="p-3 font-semibold text-foreground whitespace-nowrap">
-                        {new Date(item.date).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
+                      <td className="p-3 font-semibold text-foreground whitespace-nowrap" suppressHydrationWarning>
+                        {formatDate(item.date)}
                       </td>
                       <td className="p-3 whitespace-nowrap">
                         <span className="font-bold text-foreground block">{item.driver?.name}</span>
@@ -396,8 +402,8 @@ export function AdminEarningsClient({ drivers, initialEarnings }: AdminEarningsC
                   <div className="flex items-start justify-between">
                     <div>
                       <h4 className="font-bold text-sm text-foreground">{item.driver?.name}</h4>
-                      <span className="text-[10px] text-muted-foreground font-mono block">
-                        {item.driver?.employeeId} · {new Date(item.date).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
+                      <span className="text-[10px] text-muted-foreground font-mono block" suppressHydrationWarning>
+                        {item.driver?.employeeId} · {formatDate(item.date)}
                       </span>
                     </div>
 

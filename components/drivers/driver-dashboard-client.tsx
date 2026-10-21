@@ -8,13 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { bookCarAction, cancelBookingAction, cancelUserBookingAction } from "@/actions/driver-trips";
-import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2, Headphones, PhoneCall, Mail, ShieldAlert, AlertTriangle } from "lucide-react";
+import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2, Headphones, PhoneCall, MessageCircle, Mail, ShieldAlert, AlertTriangle, XCircle } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useTranslation } from "@/components/layout/language-provider";
 import { useRouter } from "next/navigation";
 import { isWeeklyLogSubmitted } from "@/utils/weekly-log-utils";
 
 import { PerformanceMatrixSection, PerformanceMatrixData } from "./performance-matrix-section";
+import { DEFAULT_BOOKING_LOCATIONS, BookingLocation } from "@/lib/locations";
+import { getBookingLocationsAction } from "@/actions/locations";
 
 interface DriverDashboardClientProps {
   driver: User;
@@ -56,11 +58,23 @@ export function DriverDashboardClient({
   const [liveBookings, setLiveBookings] = useState<(Trip & { driver?: User | null; vehicle?: Vehicle | null })[]>(bookings);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
+  const [locationsList, setLocationsList] = useState<BookingLocation[]>(DEFAULT_BOOKING_LOCATIONS);
+  const [isCustomPickup, setIsCustomPickup] = useState(false);
+  const [isCustomDrop, setIsCustomDrop] = useState(false);
+
+  useEffect(() => {
+    getBookingLocationsAction().then((locs) => {
+      if (locs && locs.length > 0) {
+        setLocationsList(locs);
+      }
+    });
+  }, []);
+
   const [bookingTimes, setBookingTimes] = useState({
     startTime: "",
     endTime: "",
-    pickup: "",
-    destination: "",
+    pickup: DEFAULT_BOOKING_LOCATIONS[0].name,
+    destination: DEFAULT_BOOKING_LOCATIONS[0].name,
     purpose: "Corporate Duty",
     notes: "",
   });
@@ -208,7 +222,7 @@ export function DriverDashboardClient({
 
 
 
-  const formatTo12Hour = (dateTimeStr: string) => {
+  const formatTo24Hour = (dateTimeStr: string) => {
     if (!dateTimeStr) return "HH:MM";
     const parts = dateTimeStr.split("T");
     if (parts.length < 2) return "HH:MM";
@@ -219,10 +233,7 @@ export function DriverDashboardClient({
     const minutes = timeParts[1];
     
     if (isNaN(hours)) return "HH:MM";
-    
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const displayHour = hours % 12 === 0 ? 12 : hours % 12;
-    return `${String(displayHour).padStart(2, '0')}:${minutes} ${ampm}`;
+    return `${String(hours).padStart(2, '0')}:${minutes}`;
   };
 
   const slotsList = React.useMemo(() => {
@@ -230,11 +241,11 @@ export function DriverDashboardClient({
     const slots = [];
     for (let hour = 0; hour < 24; hour++) {
       for (const minute of [0, 30]) {
-        const ampm = hour >= 12 ? "PM" : "AM";
-        const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-        const displayMinute = minute === 0 ? "00" : "30";
-
         const pad = (num: number) => String(num).padStart(2, '0');
+        const displayHour = pad(hour);
+        const displayMinute = minute === 0 ? "00" : "30";
+        const timeFormatted = `${displayHour}:${displayMinute}`;
+
         const startStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}T${pad(hour)}:${pad(minute)}`;
 
         let endHour = hour;
@@ -252,11 +263,10 @@ export function DriverDashboardClient({
         if (slotEndTime <= now) continue;
 
         slots.push({
-          label: `${displayHour}:${displayMinute} ${ampm}`,
+          label: timeFormatted,
           labelFormatted: (
-            <div className="flex flex-col items-center">
-              <span className="text-[12px] font-bold">{displayHour}:{displayMinute}</span>
-              <span className="text-[9px] uppercase mt-1 tracking-wider font-semibold opacity-85">{ampm}</span>
+            <div className="flex flex-col items-center justify-center">
+              <span className="text-[13px] font-bold">{timeFormatted}</span>
             </div>
           ),
           hour,
@@ -565,8 +575,8 @@ export function DriverDashboardClient({
         setBookingTimes({
           startTime: "",
           endTime: "",
-          pickup: "",
-          destination: "",
+          pickup: locationsList[0]?.name || DEFAULT_BOOKING_LOCATIONS[0].name,
+          destination: locationsList[0]?.name || DEFAULT_BOOKING_LOCATIONS[0].name,
           purpose: "Corporate Duty",
           notes: "",
         });
@@ -692,8 +702,7 @@ export function DriverDashboardClient({
 
       {/* Fleet Vehicles Slot Booking Calendar (Design inspired by reference image) */}
       {/* 1. SELECT VEHICLE SECTION */}
-      {!selectedVehicle && (
-        <Card className="border-border bg-card text-foreground">
+      <Card className="border-border bg-card text-foreground">
           <CardHeader className="border-b border-border/30 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -745,9 +754,12 @@ export function DriverDashboardClient({
             </div>
           </CardHeader>
           <CardContent className="pt-6">
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
               {filteredVehicles.map((car) => {
                 const isAssigned = assignedVehicle?.id === car.id;
+                const isSelected = selectedVehicle?.id === car.id;
+                const carImg = (car as any).imageUrl;
+
                 return (
                   <button
                     key={car.id}
@@ -757,61 +769,102 @@ export function DriverDashboardClient({
                       setClickedBookedSlot(null);
                     }}
                     className={cn(
-                      "px-4 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-2",
-                      isAssigned 
-                        ? "border-amber-500 bg-amber-500/10 text-amber-500 font-extrabold shadow-sm"
-                        : "border-border bg-card text-foreground hover:bg-muted/10"
+                      "group rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden flex flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary w-full",
+                      isSelected
+                        ? "border-2 border-primary bg-primary/5 ring-2 ring-primary/25 shadow-md scale-[1.01]"
+                        : isAssigned
+                          ? "border-amber-500/60 bg-amber-500/5 hover:border-amber-500 hover:shadow-xs"
+                          : "border-border bg-card hover:border-primary/40 hover:bg-muted/10 hover:shadow-xs"
                     )}
                   >
-                    {(car as any).imageUrl ? (
-                      <img 
-                        src={(car as any).imageUrl} 
-                        alt={car.name} 
-                        className="w-12 h-12 rounded-full object-cover border border-border shrink-0 cursor-zoom-in" 
-                        loading="lazy"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActivePreviewImage((car as any).imageUrl);
-                        }}
-                        onMouseEnter={() => handleMouseEnter((car as any).imageUrl)}
-                        onMouseLeave={handleMouseLeave}
-                        onMouseMove={handleMouseMove}
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center border border-border shrink-0">
-                        <Truck className="h-6 w-6 text-muted-foreground" />
+                    {/* Top Rectangular Image */}
+                    <div className="relative w-full h-28 sm:h-32 bg-muted/20 overflow-hidden border-b border-border/40">
+                      {carImg ? (
+                        <img 
+                          src={carImg} 
+                          alt={car.name} 
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground/40 gap-1 bg-muted/10">
+                          <Truck className="h-8 w-8" />
+                          <span className="text-[10px] font-medium">No photo</span>
+                        </div>
+                      )}
+
+                      {/* Top Badges */}
+                      <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none">
+                        {isAssigned ? (
+                          <span className="text-[9px] bg-amber-500 text-zinc-950 font-black px-1.5 py-0.5 rounded shadow-xs uppercase tracking-wider">
+                            Assigned
+                          </span>
+                        ) : <span />}
+
+                        {isSelected && (
+                          <span className="text-[9px] bg-primary text-white font-black px-1.5 py-0.5 rounded shadow-xs uppercase tracking-wider">
+                            Active
+                          </span>
+                        )}
                       </div>
-                    )}
-                    {car.name} ({car.vehicleNumber})
-                    {isAssigned && <span className="text-[9px] bg-amber-500 text-zinc-950 px-1.5 py-0.5 rounded font-bold ml-1 uppercase tracking-wider">Assigned</span>}
+                    </div>
+
+                    {/* Bottom Info: Title and Plate */}
+                    <div className="p-3 flex flex-col justify-between flex-1 w-full space-y-1">
+                      <div>
+                        <h4 className="font-bold text-xs sm:text-sm text-foreground leading-snug line-clamp-1 group-hover:text-primary transition-colors">
+                          {car.name}
+                        </h4>
+                        <p className="text-[11px] font-mono font-semibold text-muted-foreground mt-0.5 truncate">
+                          {car.vehicleNumber}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1.5 border-t border-border/30 text-[10px] text-muted-foreground">
+                        <span>{car.seatingCapacity ? `${car.seatingCapacity} seats` : "Standard"}</span>
+                        <span className={cn(
+                          "font-bold uppercase tracking-wider text-[9px]",
+                          car.status === "AVAILABLE" ? "text-emerald-500" : car.status === "ON_TRIP" ? "text-blue-500" : "text-amber-500"
+                        )}>
+                          {car.status}
+                        </span>
+                      </div>
+                    </div>
                   </button>
                 );
               })}
               {filteredVehicles.length === 0 && (
-                <span className="text-xs text-muted-foreground italic">No vehicles in this category.</span>
+                <div className="col-span-full py-8 text-center text-xs text-muted-foreground italic">
+                  No vehicles in this category.
+                </div>
               )}
             </div>
           </CardContent>
         </Card>
-      )}
 
       {/* 2. BOOKING SLOT SECTION */}
       {selectedVehicle && (
         <Card className="border-border bg-card text-foreground">
           <CardHeader className="border-b border-border/30 pb-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="space-y-3">
               <div>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Truck className="h-5 w-5 text-primary" />
                   Booking Slot
                 </CardTitle>
-                <CardDescription className="flex items-center gap-2 mt-1">
-                  Active Vehicle: 
-                  {(selectedVehicle as any).imageUrl ? (
+                <div className="text-xs text-muted-foreground mt-1.5 font-medium">
+                  Active Vehicle: <span className="font-bold text-primary font-mono">{selectedVehicle.name} ({selectedVehicle.vehicleNumber})</span>
+                </div>
+              </div>
+
+              {/* Big Car Image & Small Change Vehicle Button */}
+              <div className="flex flex-col items-center pt-1 w-full">
+                {(selectedVehicle as any).imageUrl ? (
+                  <div className="w-full max-w-md rounded-2xl overflow-hidden border border-border/80 shadow-sm bg-muted/10 relative group flex items-center justify-center p-1">
                     <img 
                       src={(selectedVehicle as any).imageUrl} 
                       alt={selectedVehicle.name} 
-                      className="w-16 h-16 rounded object-cover border border-border shrink-0 ml-1 cursor-zoom-in" 
+                      className="w-full h-auto max-h-60 sm:max-h-72 object-contain rounded-xl cursor-zoom-in transition-transform duration-300 group-hover:scale-[1.02]" 
                       loading="lazy"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -821,32 +874,35 @@ export function DriverDashboardClient({
                       onMouseLeave={handleMouseLeave}
                       onMouseMove={handleMouseMove}
                     />
-                  ) : (
-                    <span className="w-16 h-16 rounded bg-muted flex items-center justify-center border border-border shrink-0 ml-1"><Truck className="h-8 w-8 text-muted-foreground" /></span>
-                  )}
-                  <span className="font-bold text-primary font-mono">{selectedVehicle.name} ({selectedVehicle.vehicleNumber})</span>
-                </CardDescription>
+                  </div>
+                ) : (
+                  <div className="w-full max-w-md h-48 rounded-2xl bg-muted/30 border border-border flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                    <Truck className="h-12 w-12 opacity-50" />
+                    <span className="text-xs font-semibold">No Image Available</span>
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedVehicle(null);
+                    setBookingTimes({
+                      startTime: "",
+                      endTime: "",
+                      pickup: locationsList[0]?.name || DEFAULT_BOOKING_LOCATIONS[0].name,
+                      destination: locationsList[0]?.name || DEFAULT_BOOKING_LOCATIONS[0].name,
+                      purpose: "Corporate Duty",
+                      notes: "",
+                    });
+                    setClickedBookedSlot(null);
+                  }}
+                  className="h-6 px-3 text-[10px] font-semibold mt-2.5 rounded-md border-border text-foreground hover:bg-muted/40 shadow-2xs cursor-pointer"
+                >
+                  Change Vehicle
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSelectedVehicle(null);
-                  setBookingTimes({
-                    startTime: "",
-                    endTime: "",
-                    pickup: "",
-                    destination: "",
-                    purpose: "Corporate Duty",
-                    notes: "",
-                  });
-                  setClickedBookedSlot(null);
-                }}
-                className="font-bold text-xs"
-              >
-                Change Vehicle
-              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
@@ -1005,7 +1061,7 @@ export function DriverDashboardClient({
                   <div className="flex items-center gap-2.5 mt-1.5">
                     <Clock className="h-5 w-5 text-muted-foreground/60" />
                     <span className="text-base font-extrabold text-foreground">
-                      {mounted && bookingTimes.startTime ? formatTo12Hour(bookingTimes.startTime) : "HH:MM"}
+                      {mounted && bookingTimes.startTime ? formatTo24Hour(bookingTimes.startTime) : "HH:MM"}
                     </span>
                   </div>
                 </div>
@@ -1024,7 +1080,7 @@ export function DriverDashboardClient({
                   <div className="flex items-center gap-2.5 mt-1.5">
                     <Clock className="h-5 w-5 text-muted-foreground/60" />
                     <span className="text-base font-extrabold text-foreground">
-                      {mounted && bookingTimes.endTime ? formatTo12Hour(bookingTimes.endTime) : "HH:MM"}
+                      {mounted && bookingTimes.endTime ? formatTo24Hour(bookingTimes.endTime) : "HH:MM"}
                     </span>
                   </div>
                 </div>
@@ -1054,45 +1110,81 @@ export function DriverDashboardClient({
               )}
 
               {/* Time Slots Grid — shows only future slots */}
-              <div className="space-y-2 border-t border-border/30 pt-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select Time Slot</span>
-                  <span className="text-[10px] text-muted-foreground italic">
-                    {slotsList.length} slot{slotsList.length !== 1 ? 's' : ''} available
-                  </span>
+              <div className="space-y-2.5 border-t border-border/30 pt-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select Time Slot</span>
+                    <span className="text-[10px] text-muted-foreground italic ml-2">
+                      ({slotsList.length} slot{slotsList.length !== 1 ? 's' : ''} available)
+                    </span>
+                  </div>
+
+                  {/* Visual Color Legend */}
+                  <div className="flex flex-wrap items-center gap-2.5 text-[10px]">
+                    <div className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm border-2 border-emerald-500 bg-emerald-500/20" />
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">Selected</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm border-2 border-amber-500 bg-amber-500/20" />
+                      <span className="font-semibold text-amber-600 dark:text-amber-400">Your Booking</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm border border-red-500/30 bg-red-500/15" />
+                      <span className="font-medium text-red-500">Booked</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm border border-slate-200 dark:border-slate-800 bg-card" />
+                      <span className="font-medium text-muted-foreground">Available</span>
+                    </div>
+                  </div>
                 </div>
+
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 max-h-64 overflow-y-auto pr-1">
                   {slotsList.map((slot, index) => {
                     const booking = isSlotBooked(slot);
                     const isBooked = !!booking;
+                    const isMyBooking = isBooked && ((booking as any).driverId === driver.id || (booking as any).driver?.id === driver.id);
+                    const isOtherBooking = isBooked && !isMyBooking;
                     const slotStart = new Date(slot.startStr).getTime();
-                    const isSelected = bookingTimes.startTime && bookingTimes.endTime
+                    const isSelected = !isBooked && (bookingTimes.startTime && bookingTimes.endTime
                       ? (slotStart >= new Date(bookingTimes.startTime).getTime() && slotStart <= new Date(bookingTimes.endTime).getTime())
-                      : (bookingTimes.startTime === slot.startStr || bookingTimes.endTime === slot.startStr);
+                      : (bookingTimes.startTime === slot.startStr || bookingTimes.endTime === slot.startStr));
                     
                     return (
                       <button
                         key={index}
                         type="button"
-                        title={isBooked ? `Booked by ${(booking as any)?.driver?.name || (booking as any)?.requestedBy || 'Driver'}` : undefined}
+                        disabled={isOtherBooking}
+                        title={
+                          isMyBooking
+                            ? "Your booking (Click to view details)"
+                            : isOtherBooking
+                              ? `Booked by ${(booking as any)?.driver?.name || (booking as any)?.requestedBy || 'another driver'}`
+                              : `Available slot ${slot.labelFormatted}`
+                        }
                         onClick={() => {
-                          if (isBooked) {
+                          if (isMyBooking) {
                             setClickedBookedSlot(booking);
-                          } else {
+                          } else if (!isOtherBooking) {
                             handleSlotClick(slot);
                           }
                         }}
                         className={cn(
-                          "p-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all h-[60px]",
-                          isBooked
-                            ? "bg-red-600/80 border-red-700/30 text-white hover:bg-red-600 cursor-help"
-                            : isSelected
-                              ? "border-primary bg-primary/10 text-primary font-bold shadow-md glow-primary"
-                              : "border-border bg-muted/10 hover:bg-muted/30 text-foreground"
+                          "p-2 rounded-xl border flex flex-col items-center justify-center text-center transition-all h-[52px]",
+                          isSelected
+                            ? "border-2 border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs ring-2 ring-emerald-500/20 cursor-pointer"
+                            : isMyBooking
+                              ? "border-2 border-amber-500 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold shadow-xs hover:bg-amber-500/25 cursor-pointer"
+                              : isOtherBooking
+                                ? "border border-red-500/25 bg-red-500/10 text-red-500 dark:text-red-400 cursor-not-allowed opacity-75"
+                                : "border border-slate-200 dark:border-slate-800 bg-card hover:border-primary/50 hover:bg-primary/5 text-foreground cursor-pointer"
                         )}
                       >
-                        {slot.labelFormatted}
-                        {isBooked && <span className="text-[8px] mt-0.5 opacity-80">Booked</span>}
+                        <span className="text-xs font-bold leading-tight">{slot.labelFormatted}</span>
+                        {isMyBooking && <span className="text-[8px] mt-0.5 font-bold uppercase tracking-wider leading-none">Your booking</span>}
+                        {isOtherBooking && <span className="text-[8px] mt-0.5 font-semibold opacity-90 leading-none">Booked</span>}
+                        {isSelected && <span className="text-[8px] mt-0.5 font-bold uppercase tracking-wider leading-none">Selected</span>}
                       </button>
                     );
                   })}
@@ -1119,7 +1211,7 @@ export function DriverDashboardClient({
                       <div>
                         <span className="text-muted-foreground block">Booking Schedule</span>
                         <span className="font-semibold text-foreground">
-                          {new Date(clickedBookedSlot.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {new Date(clickedBookedSlot.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          {new Date(clickedBookedSlot.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false})} - {new Date(clickedBookedSlot.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false})}
                         </span>
                       </div>
                     </div>
@@ -1143,27 +1235,116 @@ export function DriverDashboardClient({
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Pickup Location</label>
-                    <Input
-                      type="text"
-                      placeholder="e.g. Operations Center"
-                      value={bookingTimes.pickup}
-                      onChange={(e) => setBookingTimes({ ...bookingTimes, pickup: e.target.value })}
-                      className="focus-visible:ring-primary text-xs h-10"
-                      required
-                    />
+                  {/* Pickup Location */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-muted-foreground">Pickup Location</label>
+                      {isCustomPickup && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomPickup(false);
+                            setBookingTimes({
+                              ...bookingTimes,
+                              pickup: locationsList[0]?.name || DEFAULT_BOOKING_LOCATIONS[0].name,
+                            });
+                          }}
+                          className="text-[10px] text-primary hover:underline font-semibold"
+                        >
+                          Select preset
+                        </button>
+                      )}
+                    </div>
+                    {!isCustomPickup ? (
+                      <select
+                        value={bookingTimes.pickup}
+                        onChange={(e) => {
+                          if (e.target.value === "__custom__") {
+                            setIsCustomPickup(true);
+                            setBookingTimes({ ...bookingTimes, pickup: "" });
+                          } else {
+                            setBookingTimes({ ...bookingTimes, pickup: e.target.value });
+                          }
+                        }}
+                        className="w-full h-10 rounded-xl border border-input bg-card px-3 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                        required
+                      >
+                        {locationsList
+                          .filter((l) => l.type === "pickup" || l.type === "both")
+                          .map((loc) => (
+                            <option key={loc.id} value={loc.name}>
+                              {loc.name}
+                            </option>
+                          ))}
+                        <option value="__custom__">+ Other / Enter Custom...</option>
+                      </select>
+                    ) : (
+                      <Input
+                        type="text"
+                        placeholder="Type custom pickup location..."
+                        value={bookingTimes.pickup}
+                        onChange={(e) => setBookingTimes({ ...bookingTimes, pickup: e.target.value })}
+                        className="focus-visible:ring-primary text-xs h-10 rounded-xl"
+                        autoFocus
+                        required
+                      />
+                    )}
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Drop Location</label>
-                    <Input
-                      type="text"
-                      placeholder="e.g. Destination Site"
-                      value={bookingTimes.destination}
-                      onChange={(e) => setBookingTimes({ ...bookingTimes, destination: e.target.value })}
-                      className="focus-visible:ring-primary text-xs h-10"
-                      required
-                    />
+
+                  {/* Drop Location */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-muted-foreground">Drop Location</label>
+                      {isCustomDrop && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomDrop(false);
+                            setBookingTimes({
+                              ...bookingTimes,
+                              destination: locationsList[0]?.name || DEFAULT_BOOKING_LOCATIONS[0].name,
+                            });
+                          }}
+                          className="text-[10px] text-primary hover:underline font-semibold"
+                        >
+                          Select preset
+                        </button>
+                      )}
+                    </div>
+                    {!isCustomDrop ? (
+                      <select
+                        value={bookingTimes.destination}
+                        onChange={(e) => {
+                          if (e.target.value === "__custom__") {
+                            setIsCustomDrop(true);
+                            setBookingTimes({ ...bookingTimes, destination: "" });
+                          } else {
+                            setBookingTimes({ ...bookingTimes, destination: e.target.value });
+                          }
+                        }}
+                        className="w-full h-10 rounded-xl border border-input bg-card px-3 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                        required
+                      >
+                        {locationsList
+                          .filter((l) => l.type === "drop" || l.type === "both")
+                          .map((loc) => (
+                            <option key={loc.id} value={loc.name}>
+                              {loc.name}
+                            </option>
+                          ))}
+                        <option value="__custom__">+ Other / Enter Custom...</option>
+                      </select>
+                    ) : (
+                      <Input
+                        type="text"
+                        placeholder="Type custom drop location..."
+                        value={bookingTimes.destination}
+                        onChange={(e) => setBookingTimes({ ...bookingTimes, destination: e.target.value })}
+                        className="focus-visible:ring-primary text-xs h-10 rounded-xl"
+                        autoFocus
+                        required
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -1206,111 +1387,150 @@ export function DriverDashboardClient({
       )}
 
       {/* My Upcoming Bookings */}
-      <Card className="border-border bg-card flex flex-col justify-between w-full text-foreground">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
+      <div className="space-y-3 w-full text-foreground">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-lg font-bold">
             <Calendar className="h-5 w-5 text-primary" />
-            {t("my_bookings_schedule")}
-          </CardTitle>
-          <CardDescription>{t("bookings_schedule_desc")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 flex-1">
-          <div className="space-y-3 max-h-80 overflow-y-auto pr-1 divide-y divide-border/40">
-            {bookings
-              .filter((b) => b.driverId === driver.id && b.status !== "COMPLETED" && b.status !== "CANCELLED")
-              .map((b) => {
-                const now = new Date();
-                const startTime = new Date(b.startTime);
-                const diffHours = (startTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-                const canCancelDirectly = diffHours >= 12;
+            <span>{t("my_bookings_schedule")}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("bookings_schedule_desc")}</p>
+        </div>
 
-                return (
-                  <div key={b.id} className="pt-3 first:pt-0 space-y-2 text-xs">
-                    <div className="flex justify-between items-center font-semibold">
-                      <span className="font-mono text-primary font-bold">{b.tripNumber}</span>
-                      <div className="flex items-center gap-1.5">
-                        {!canCancelDirectly && (
-                          <Badge variant="outline" className="text-[9px] font-bold text-amber-500 bg-amber-500/10 border-amber-500/30">
-                            &lt;12h to start
-                          </Badge>
-                        )}
-                        <Badge variant="warning">{b.status}</Badge>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {(b.vehicle as any)?.imageUrl ? (
-                        <img 
-                          src={(b.vehicle as any).imageUrl} 
-                          alt={b.vehicle?.name} 
-                          className="w-14 h-14 rounded object-cover border border-border shrink-0 cursor-zoom-in" 
-                          loading="lazy"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActivePreviewImage((b.vehicle as any).imageUrl);
-                          }}
-                          onMouseEnter={() => handleMouseEnter((b.vehicle as any).imageUrl)}
-                          onMouseLeave={handleMouseLeave}
-                          onMouseMove={handleMouseMove}
-                        />
-                      ) : (
-                        <div className="w-14 h-14 rounded bg-muted flex items-center justify-center border border-border shrink-0">
-                          <Truck className="h-7 w-7 text-muted-foreground" />
+        <div className="space-y-4 max-h-[700px] overflow-y-auto pr-1">
+          {bookings
+            .filter((b) => b.driverId === driver.id && b.status !== "COMPLETED" && b.status !== "CANCELLED")
+            .map((b) => {
+              const now = new Date();
+              const startTime = new Date(b.startTime);
+              const diffHours = (startTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+              const canCancelDirectly = diffHours >= 12;
+
+              return (
+                <div key={b.id} className="rounded-3xl border border-border/70 bg-card p-4 sm:p-5 space-y-4 shadow-xs">
+                  {/* Trip Header & Badges */}
+                  <div className="space-y-2.5">
+                    <h3 className="text-2xl font-black text-amber-500 tracking-tight">{b.tripNumber}</h3>
+                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto pb-0.5">
+                      {!canCancelDirectly && (
+                        <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/80 bg-amber-50/80 dark:bg-amber-950/40 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap shrink-0">
+                          <Clock className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                          <span>&lt;12h to start</span>
                         </div>
                       )}
-                      <div>
-                        <span className="font-semibold block text-sm">{b.vehicle?.name || "Vehicle"} ({b.vehicle?.vehicleNumber || "—"})</span>
-                        <span className="text-muted-foreground block text-[11px]">{b.pickup} ➔ {b.destination}</span>
+                      <div className="inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/40 px-4 py-1 text-xs font-extrabold text-amber-700 dark:text-amber-300 tracking-wide uppercase whitespace-nowrap shrink-0">
+                        {b.status}
                       </div>
                     </div>
+                  </div>
 
-                    <div className="text-[10px] text-muted-foreground font-mono flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mt-2 pt-2 border-t border-border/30">
-                      <span>{mounted ? `📅 ${new Date(b.startTime).toLocaleDateString()} · ${new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}</span>
-
-                      {canCancelDirectly ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-[10px] border-red-500/30 text-red-500 hover:bg-red-500/10 font-bold cursor-pointer shrink-0"
-                          onClick={async () => {
-                            if (confirm("Are you sure you want to cancel this booking?")) {
-                              startTransition(async () => {
-                                const res = await cancelUserBookingAction(b.id);
-                                if (res.error) {
-                                  if (res.requiresSupport) {
-                                    setSupportBooking(b);
-                                  } else {
-                                    alert(res.error);
-                                  }
-                                } else {
-                                  router.refresh();
-                                }
-                              });
-                            }
-                          }}
-                          disabled={isPending}
-                        >
-                          Cancel Booking
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-[10px] border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 font-bold cursor-pointer shrink-0"
-                          onClick={() => setSupportBooking(b)}
-                        >
-                          <Headphones className="h-3 w-3 mr-1 text-amber-500" /> Contact Support to Cancel
-                        </Button>
-                      )}
+                  {/* Vehicle Card */}
+                  <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-3.5 flex items-center gap-3.5 shadow-xs">
+                    {(b.vehicle as any)?.imageUrl ? (
+                      <img 
+                        src={(b.vehicle as any).imageUrl} 
+                        alt={b.vehicle?.name} 
+                        className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl object-cover border border-border shrink-0 cursor-zoom-in" 
+                        loading="lazy"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActivePreviewImage((b.vehicle as any).imageUrl);
+                        }}
+                        onMouseEnter={() => handleMouseEnter((b.vehicle as any).imageUrl)}
+                        onMouseLeave={handleMouseLeave}
+                        onMouseMove={handleMouseMove}
+                      />
+                    ) : (
+                      <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl bg-muted flex items-center justify-center border border-border shrink-0">
+                        <Truck className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-base sm:text-lg text-foreground leading-snug truncate">
+                        {b.vehicle?.name || "Vehicle"}
+                      </h4>
+                      <p className="text-xs sm:text-sm font-semibold text-muted-foreground mt-0.5 truncate">
+                        ({b.vehicle?.vehicleNumber || "—"})
+                      </p>
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs sm:text-sm font-medium text-muted-foreground mt-1.5">
+                        <span className="text-foreground/90 font-medium break-words">{b.pickup}</span>
+                        <span className="text-primary font-bold text-xs sm:text-sm leading-none shrink-0">➔</span>
+                        <span className="text-foreground/90 font-medium break-words">{b.destination}</span>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-            {bookings.filter((b) => b.driverId === driver.id && b.status !== "COMPLETED" && b.status !== "CANCELLED").length === 0 && (
-              <p className="text-xs text-muted-foreground text-center italic py-6">{t("no_upcoming_bookings")}</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+
+                  {/* Time & Date Card */}
+                  <div className="rounded-2xl border border-border/70 bg-card p-3.5 sm:p-4 space-y-2.5 shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                        <Clock className="h-4 w-4 text-amber-500 stroke-[2.5]" />
+                      </div>
+                      <span className="font-extrabold text-base sm:text-lg text-foreground tracking-tight">
+                        {mounted ? `${new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} – ${new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}` : ""}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                        <Calendar className="h-5 w-5 text-muted-foreground/80 shrink-0" />
+                      </div>
+                      <span className="font-semibold text-sm sm:text-base text-muted-foreground">
+                        {mounted ? new Date(b.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : ""}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Action Button */}
+                  {canCancelDirectly ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (confirm("Are you sure you want to cancel this booking?")) {
+                          startTransition(async () => {
+                            const res = await cancelUserBookingAction(b.id);
+                            if (res.error) {
+                              if (res.requiresSupport) {
+                                setSupportBooking(b);
+                              } else {
+                                alert(res.error);
+                              }
+                            } else {
+                              router.refresh();
+                            }
+                          });
+                        }
+                      }}
+                      disabled={isPending}
+                      className="w-full rounded-2xl border border-red-400/80 bg-red-50/60 hover:bg-red-100/70 dark:bg-red-950/20 dark:hover:bg-red-900/30 py-3 px-3 sm:px-4 flex items-center justify-center gap-2 sm:gap-2.5 transition-all cursor-pointer shadow-xs active:scale-[0.99] disabled:opacity-50"
+                    >
+                      <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                      <div className="h-4 sm:h-5 w-px bg-red-300 dark:bg-red-700 shrink-0" />
+                      <span className="text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm whitespace-nowrap">
+                        Cancel Booking
+                      </span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setSupportBooking(b)}
+                      className="w-full rounded-2xl border border-amber-400 bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/20 dark:hover:bg-amber-900/30 py-3 px-3 sm:px-4 flex items-center justify-center gap-2 sm:gap-2.5 transition-all cursor-pointer shadow-xs active:scale-[0.99]"
+                    >
+                      <Headphones className="h-5 w-5 text-amber-500 shrink-0" />
+                      <div className="h-4 sm:h-5 w-px bg-amber-300 dark:bg-amber-700 shrink-0" />
+                      <span className="text-amber-600 dark:text-amber-400 font-bold text-[11px] min-[370px]:text-xs sm:text-sm whitespace-nowrap">
+                        Contact Admin Support to Cancel
+                      </span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          {bookings.filter((b) => b.driverId === driver.id && b.status !== "COMPLETED" && b.status !== "CANCELLED").length === 0 && (
+            <p className="text-xs text-muted-foreground text-center italic py-8 border border-dashed border-border/70 rounded-2xl bg-card">
+              {t("no_upcoming_bookings")}
+            </p>
+          )}
+        </div>
+      </div>
 
       {/* Contact Support Cancellation Modal */}
       {supportBooking && (
@@ -1331,6 +1551,7 @@ export function DriverDashboardClient({
                     {new Date(supportBooking.startTime).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
+                      hour12: false,
                     })} ({new Date(supportBooking.startTime).toLocaleDateString()})
                   </strong>.
                 </p>
@@ -1362,18 +1583,43 @@ export function DriverDashboardClient({
               </div>
             </div>
 
-            <div className="space-y-2 pt-1">
-              <span className="text-xs font-bold text-foreground block">Please contact Operations Support to request cancellation:</span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="space-y-2.5 pt-1">
+              <span className="text-xs font-bold text-foreground block">
+                Please contact Admin Support to request cancellation:
+              </span>
+              <div className="space-y-2">
+                {/* Contact admin support */}
                 <a
-                  href="tel:+18005558294"
-                  className="flex items-center justify-center gap-2 p-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-sm"
+                  href="tel:+358417297334"
+                  className="flex items-center justify-between p-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-sm"
                 >
-                  <PhoneCall className="h-4 w-4" /> Call Dispatch Desk
+                  <div className="flex items-center gap-2.5">
+                    <PhoneCall className="h-4 w-4 shrink-0" />
+                    <span>Contact Admin Support</span>
+                  </div>
+                  <span className="font-mono text-emerald-100 text-xs tracking-tight">+358 41 7297334</span>
                 </a>
+
+                {/* Connect WhatsApp */}
+                <a
+                  href={`https://wa.me/358417297334?text=${encodeURIComponent(
+                    `Hello Admin Support, I need to request cancellation for Trip #${supportBooking.tripNumber} (${supportBooking.vehicle?.name || "Vehicle"} - ${supportBooking.vehicle?.vehicleNumber || ""}).`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-3 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-white font-bold text-xs transition-colors shadow-sm"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <MessageCircle className="h-4 w-4 shrink-0" />
+                    <span>Connect WhatsApp</span>
+                  </div>
+                  <span className="font-mono text-white/95 text-xs tracking-tight">+358 41 7297334</span>
+                </a>
+
+                {/* Email Support */}
                 <a
                   href={`mailto:support@smartforcetaxi.com?subject=Urgent%20Cancellation%20Request%20${supportBooking.tripNumber}`}
-                  className="flex items-center justify-center gap-2 p-2.5 rounded-lg border border-border bg-card hover:bg-accent text-foreground font-bold text-xs transition-colors"
+                  className="flex items-center justify-center gap-2 p-2.5 rounded-xl border border-border bg-card hover:bg-accent text-foreground font-semibold text-xs transition-colors"
                 >
                   <Mail className="h-4 w-4 text-primary" /> Email Support
                 </a>

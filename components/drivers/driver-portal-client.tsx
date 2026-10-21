@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useDriverTab } from "./driver-portal-context";
 import { DriverDashboardClient } from "./driver-dashboard-client";
+import { DriverMyBookingsClient } from "./driver-my-bookings-client";
 import { AvailableVehiclesClient } from "./available-vehicles-client";
 import { WeeklyLogClient } from "./weekly-log-client";
 import { DriverEarningsClient } from "./driver-earnings-client";
@@ -24,6 +25,7 @@ interface DriverPortalClientProps {
   todayBookings: Trip[];
   initialEarnings?: DriverEarning[];
   matrixData?: PerformanceMatrixData;
+  driverBookings?: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
 }
 
 export function DriverPortalClient({
@@ -37,8 +39,19 @@ export function DriverPortalClient({
   todayBookings,
   initialEarnings = [],
   matrixData,
+  driverBookings,
 }: DriverPortalClientProps) {
   const { activeTab } = useDriverTab();
+
+  useEffect(() => {
+    const mainEl = document.querySelector("main");
+    if (mainEl) {
+      mainEl.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    }
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    }
+  }, [activeTab]);
 
   return (
     <>
@@ -53,6 +66,15 @@ export function DriverPortalClient({
           todayBookings={todayBookings}
           logs={logs}
           matrixData={matrixData}
+        />
+      </div>
+      <div className={activeTab === "my-bookings" ? "block" : "hidden"}>
+        <DriverMyBookingsClient
+          driver={driver}
+          bookings={driverBookings || bookings}
+          fleetBookings={bookings}
+          vehicles={vehicles}
+          assignedVehicle={assignedVehicle}
         />
       </div>
       <div className={activeTab === "performance-matrix" ? "block" : "hidden"}>

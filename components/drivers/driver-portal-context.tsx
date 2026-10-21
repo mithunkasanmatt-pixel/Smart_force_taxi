@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useSearchParams, usePathname, useRouter } from "next/navigation";
 
-export type DriverTab = "dashboard" | "performance-matrix" | "vehicles" | "weekly-log" | "earnings" | "profile";
+export type DriverTab = "dashboard" | "my-bookings" | "performance-matrix" | "vehicles" | "weekly-log" | "earnings" | "profile";
 
 interface DriverTabContextProps {
   activeTab: DriverTab;
@@ -17,6 +17,9 @@ export function DriverTabProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const getTabFromUrl = (path: string, params: any): DriverTab => {
+    if (path === "/driver/bookings" || params?.get("tab") === "bookings" || params?.get("tab") === "my-bookings") {
+      return "my-bookings";
+    }
     if (path === "/driver/performance" || path === "/driver/performance-matrix" || params?.get("tab") === "performance" || params?.get("tab") === "performance-matrix") {
       return "performance-matrix";
     }
@@ -59,7 +62,9 @@ export function DriverTabProvider({ children }: { children: React.ReactNode }) {
     setActiveTabState(tab);
 
     let targetPath = "/driver";
-    if (tab === "performance-matrix") {
+    if (tab === "my-bookings") {
+      targetPath = "/driver/bookings";
+    } else if (tab === "performance-matrix") {
       targetPath = "/driver/performance";
     } else if (tab === "vehicles") {
       targetPath = "/driver/available-vehicles";
