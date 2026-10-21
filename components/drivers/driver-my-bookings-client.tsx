@@ -18,14 +18,18 @@ import {
   Calendar as CalendarIcon, 
   X, 
   Layers, 
-  Briefcase
+  Briefcase,
+  ShieldAlert,
+  UserCheck,
+  Search,
+  Headphones
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { bookCarAction } from "@/actions/driver-trips";
+import { bookCarAction, cancelUserBookingAction } from "@/actions/driver-trips";
 import { DEFAULT_BOOKING_LOCATIONS, BookingLocation } from "@/lib/locations";
 import { getBookingLocationsAction } from "@/actions/locations";
 
@@ -93,6 +97,8 @@ export function DriverMyBookingsClient({
   const [isCustomDrop, setIsCustomDrop] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<string | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<"ALL" | "UPCOMING" | "ADMIN" | "DRIVER" | "COMPLETED" | "CANCELLED">("ALL");
+  const [historySearch, setHistorySearch] = useState("");
 
   const [bookingTimes, setBookingTimes] = useState({
     startTime: "",
@@ -1225,6 +1231,414 @@ export function DriverMyBookingsClient({
           </CardContent>
         </Card>
       )}
+
+      {/* ========================================================================= */}
+      {/* 4. BOOKINGS HISTORY & SCHEDULE                                            */}
+      {/* ========================================================================= */}
+      {(() => {
+        const now = new Date();
+        const allHistoryBookings = allDriverBookings || [];
+
+        const upcomingCount = allHistoryBookings.filter(
+          (b) => b.status !== "COMPLETED" && b.status !== "CANCELLED" && new Date(b.endTime) >= now
+        ).length;
+
+        const adminCount = allHistoryBookings.filter(
+          (b) => b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN"))
+        ).length;
+
+        const driverCount = allHistoryBookings.filter(
+          (b) => !(b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN")))
+        ).length;
+
+        const completedCount = allHistoryBookings.filter(
+          (b) => b.status === "COMPLETED" || (b.status !== "CANCELLED" && new Date(b.endTime) < now)
+        ).length;
+
+        const cancelledCount = allHistoryBookings.filter((b) => b.status === "CANCELLED").length;
+
+        const filteredHistory = allHistoryBookings.filter((b) => {
+          if (historyFilter === "UPCOMING") {
+            if (b.status === "COMPLETED" || b.status === "CANCELLED" || new Date(b.endTime) < now) return false;
+          } else if (historyFilter === "ADMIN") {
+            const isAdmin = b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN"));
+            if (!isAdmin) return false;
+          } else if (historyFilter === "DRIVER") {
+            const isAdmin = b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN"));
+            if (isAdmin) return false;
+          } else if (historyFilter === "COMPLETED") {
+            if (b.status !== "COMPLETED" && !(b.status !== "CANCELLED" && new Date(b.endTime) < now)) return false;
+          } else if (historyFilter === "CANCELLED") {
+            if (b.status !== "CANCELLED") return false;
+          }
+
+          if (historySearch.trim()) {
+            const q = historySearch.toLowerCase();
+            const matchTrip = (b.tripNumber || "").toLowerCase().includes(q);
+            const matchVehicle = (b.vehicle?.name || "").toLowerCase().includes(q) || (b.vehicle?.vehicleNumber || "").toLowerCase().includes(q);
+            const matchLoc = (b.pickup || "").toLowerCase().includes(q) || (b.destination || "").toLowerCase().includes(q);
+            const matchPurpose = (b.purpose || "").toLowerCase().includes(q);
+            if (!matchTrip && !matchVehicle && !matchLoc && !matchPurpose) return false;
+          }
+
+          return true;
+        });
+
+        return (
+          <div className="space-y-4 w-full text-foreground pt-2">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/30 pb-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-lg sm:text-xl font-bold">
+                  <CalendarDays className="h-5 w-5 text-primary" />
+                  <span>Booking History & Schedule</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  View your complete booking history — including admin-assigned duties and self-booked slots.
+                </p>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search history & fleet..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="pl-9 h-9 text-xs bg-card"
+                />
+              </div>
+            </div>
+
+            {/* Filter Tabs (All, Upcoming, Admin Assigned, Driver Booked, Completed, Cancelled) */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setHistoryFilter("ALL")}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                  historyFilter === "ALL"
+                    ? "bg-primary text-white shadow-xs"
+                    : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                )}
+              >
+                <span>All History</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-md text-[10px]",
+                  historyFilter === "ALL" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                )}>
+                  {allHistoryBookings.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter("UPCOMING")}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                  historyFilter === "UPCOMING"
+                    ? "bg-amber-500 text-zinc-950 shadow-xs"
+                    : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                )}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <span>Upcoming</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-md text-[10px]",
+                  historyFilter === "UPCOMING" ? "bg-black/15 text-zinc-950 font-black" : "bg-muted text-muted-foreground"
+                )}>
+                  {upcomingCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter("ADMIN")}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                  historyFilter === "ADMIN"
+                    ? "bg-purple-600 text-white shadow-xs"
+                    : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                )}
+              >
+                <ShieldAlert className="h-3.5 w-3.5" />
+                <span>Admin Assigned</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-md text-[10px]",
+                  historyFilter === "ADMIN" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                )}>
+                  {adminCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter("DRIVER")}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                  historyFilter === "DRIVER"
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                )}
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                <span>Driver Booked</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-md text-[10px]",
+                  historyFilter === "DRIVER" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                )}>
+                  {driverCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter("COMPLETED")}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                  historyFilter === "COMPLETED"
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                )}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Completed</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-md text-[10px]",
+                  historyFilter === "COMPLETED" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                )}>
+                  {completedCount}
+                </span>
+              </button>
+
+              {cancelledCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setHistoryFilter("CANCELLED")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                    historyFilter === "CANCELLED"
+                      ? "bg-red-600 text-white shadow-xs"
+                      : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                  )}
+                >
+                  <XCircle className="h-3.5 w-3.5" />
+                  <span>Cancelled</span>
+                  <span className={cn(
+                    "px-1.5 py-0.2 rounded-md text-[10px]",
+                    historyFilter === "CANCELLED" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                  )}>
+                    {cancelledCount}
+                  </span>
+                </button>
+              )}
+            </div>
+
+            {/* List of Bookings / History */}
+            <div className="space-y-4 max-h-[750px] overflow-y-auto pr-1">
+              {filteredHistory.map((b) => {
+                const bStartTime = new Date(b.startTime);
+                const bEndTime = new Date(b.endTime);
+                const isPast = bEndTime < now;
+                const isUpcoming = !isPast && b.status !== "COMPLETED" && b.status !== "CANCELLED";
+                const diffHours = (bStartTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+                const canCancelDirectly = diffHours >= 12 && isUpcoming;
+                const isAdmin = b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN"));
+
+                return (
+                  <div key={b.id} className="rounded-3xl border border-border/70 bg-card p-4 sm:p-5 space-y-4 shadow-xs transition-all hover:border-primary/40">
+                    {/* Trip Header & Badges */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <h3 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
+                          {b.tripNumber}
+                        </h3>
+
+                        {/* Admin Assigned vs Driver Booked Tag */}
+                        {isAdmin ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-0.5 text-xs font-black text-purple-600 dark:text-purple-400 uppercase tracking-wide">
+                            <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+                            <span>Admin Assigned</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-0.5 text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-wide">
+                            <UserCheck className="h-3.5 w-3.5 shrink-0" />
+                            <span>Driver Booked</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Status Badges */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isUpcoming && !canCancelDirectly && (
+                          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/80 bg-amber-50/80 dark:bg-amber-950/40 px-3 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap shrink-0">
+                            <Clock className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                            <span>&lt;12h to start</span>
+                          </div>
+                        )}
+
+                        <div className={cn(
+                          "inline-flex items-center rounded-full px-3.5 py-0.5 text-xs font-extrabold tracking-wide uppercase whitespace-nowrap shrink-0 border",
+                          b.status === "COMPLETED" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400" :
+                          b.status === "CANCELLED" ? "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400" :
+                          b.status === "IN_PROGRESS" ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400" :
+                          "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                        )}>
+                          {b.status}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Vehicle Card */}
+                    <div className="rounded-2xl border border-border/70 bg-muted/10 p-3 sm:p-3.5 flex items-center gap-3.5 shadow-xs">
+                      {(b.vehicle as any)?.imageUrl ? (
+                        <img 
+                          src={(b.vehicle as any).imageUrl} 
+                          alt={b.vehicle?.name} 
+                          className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl object-cover border border-border shrink-0 cursor-zoom-in" 
+                          loading="lazy"
+                          onClick={() => setInspectedTrip(b)}
+                        />
+                      ) : (
+                        <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl bg-muted flex items-center justify-center border border-border shrink-0">
+                          <Truck className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-base sm:text-lg text-foreground leading-snug truncate">
+                          {b.vehicle?.name || "Vehicle"}
+                        </h4>
+                        <p className="text-xs sm:text-sm font-semibold font-mono text-muted-foreground mt-0.5 truncate">
+                          ({b.vehicle?.vehicleNumber || "—"})
+                        </p>
+                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs sm:text-sm font-medium text-muted-foreground mt-1.5">
+                          <span className="text-foreground/90 font-medium break-words">{b.pickup}</span>
+                          <span className="text-primary font-bold text-xs sm:text-sm leading-none shrink-0">➔</span>
+                          <span className="text-foreground/90 font-medium break-words">{b.destination}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Time & Date Card */}
+                    <div className="rounded-2xl border border-border/70 bg-card p-3.5 sm:p-4 space-y-2.5 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                            <Clock className="h-4 w-4 text-amber-500 stroke-[2.5]" />
+                          </div>
+                          <span className="font-extrabold text-base sm:text-lg text-foreground tracking-tight">
+                            {mounted ? `${bStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} – ${bEndTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}` : ""}
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          {((bEndTime.getTime() - bStartTime.getTime()) / (1000 * 60 * 60)).toFixed(1)} hrs
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                          <CalendarIcon className="h-5 w-5 text-muted-foreground/80 shrink-0" />
+                        </div>
+                        <span className="font-semibold text-sm sm:text-base text-muted-foreground">
+                          {mounted ? bStartTime.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : ""}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Purpose and Notes */}
+                    {(b.purpose || b.notes) && (
+                      <div className="text-xs text-muted-foreground bg-muted/20 rounded-xl p-2.5 space-y-1">
+                        {b.purpose && <div><span className="font-semibold text-foreground">Purpose:</span> {b.purpose}</div>}
+                        {b.notes && <div><span className="font-semibold text-foreground">Notes:</span> {b.notes}</div>}
+                      </div>
+                    )}
+
+                    {/* Action Button for Upcoming Bookings */}
+                    {isUpcoming && (
+                      canCancelDirectly ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (confirm("Are you sure you want to cancel this booking?")) {
+                              startTransition(async () => {
+                                const res = await cancelUserBookingAction(b.id);
+                                if (res.error) {
+                                  alert(res.error);
+                                } else {
+                                  router.refresh();
+                                }
+                              });
+                            }
+                          }}
+                          disabled={isPending}
+                          className="w-full rounded-2xl border border-red-400/80 bg-red-50/60 hover:bg-red-100/70 dark:bg-red-950/20 dark:hover:bg-red-900/30 py-3 px-3 sm:px-4 flex items-center justify-center gap-2 sm:gap-2.5 transition-all cursor-pointer shadow-xs active:scale-[0.99] disabled:opacity-50"
+                        >
+                          <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                          <div className="h-4 sm:h-5 w-px bg-red-300 dark:bg-red-700 shrink-0" />
+                          <span className="text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm whitespace-nowrap">
+                            Cancel Booking
+                          </span>
+                        </button>
+                      ) : (
+                        <div className="p-3 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-300/80 dark:border-amber-700/60 flex items-center justify-between text-xs">
+                          <span className="text-amber-800 dark:text-amber-300 font-semibold flex items-center gap-1.5">
+                            <Headphones className="h-4 w-4 text-amber-500 shrink-0" />
+                            Starts in &lt;12h (Admin Cancellation Only)
+                          </span>
+                          <a
+                            href="tel:+358417297334"
+                            className="text-amber-600 dark:text-amber-400 font-bold hover:underline"
+                          >
+                            +358 41 7297334
+                          </a>
+                        </div>
+                      )
+                    )}
+
+                    {/* View Details Button */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setInspectedTrip(b)}
+                      className="w-full text-xs font-semibold h-9 rounded-xl"
+                    >
+                      View Trip Details
+                    </Button>
+                  </div>
+                );
+              })}
+
+              {filteredHistory.length === 0 && (
+                <div className="text-center py-10 px-4 border border-dashed border-border/70 rounded-3xl bg-card space-y-2.5">
+                  <CalendarDays className="h-8 w-8 text-muted-foreground/50 mx-auto" />
+                  <p className="text-sm font-semibold text-foreground">
+                    {historyFilter === "UPCOMING" ? "No upcoming bookings scheduled" : "No bookings found in this category"}
+                  </p>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                    {historyFilter !== "ALL"
+                      ? "Try switching to another filter tab to view all bookings and duty history."
+                      : "You have not made or been assigned any vehicle bookings yet."}
+                  </p>
+                  {historyFilter !== "ALL" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setHistoryFilter("ALL");
+                        setHistorySearch("");
+                      }}
+                      className="mt-1 text-xs"
+                    >
+                      View All History
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
 
 

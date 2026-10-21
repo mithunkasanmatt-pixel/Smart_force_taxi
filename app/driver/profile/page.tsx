@@ -1,5 +1,2 @@
-import { redirect } from "next/navigation";
+export { default, revalidate } from "../page";
 
-export default function DriverProfilePage() {
-  redirect("/driver?tab=profile");
-}

@@ -134,24 +134,25 @@ export async function bookCarAction(data: {
       });
     });
 
-    // Send confirmation email to driver
+    // Send confirmation email asynchronously without blocking the booking response
     if (driver.email) {
       const diffMs = end.getTime() - start.getTime();
       const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
       const diffMins = Math.round((diffMs % (1000 * 60 * 60)) / (1000 * 60));
       const durationText = diffHrs > 0 ? `${diffHrs}h ${diffMins}m` : `${diffMins}m`;
 
-      await sendBookingConfirmationEmail(
+      sendBookingConfirmationEmail(
         driver.email,
         driver.name,
         vehicle.name,
         start,
         end,
         durationText
-      );
+      ).catch((err) => console.error("Booking confirmation email error:", err));
     }
 
     revalidatePath("/driver");
+    revalidatePath("/driver/bookings");
     revalidatePath("/admin");
     return { success: true };
   } catch (error: any) {

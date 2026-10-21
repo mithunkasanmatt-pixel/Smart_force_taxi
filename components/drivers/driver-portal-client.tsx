@@ -62,6 +62,7 @@ export function DriverPortalClient({
           assignedVehicle={assignedVehicle}
           vehicles={vehicles}
           bookings={bookings}
+          driverBookings={driverBookings || bookings}
           activeTrip={activeTrip}
           todayBookings={todayBookings}
           logs={logs}

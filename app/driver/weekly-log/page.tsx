@@ -1,6 +1,3 @@
-import { redirect } from "next/navigation";
+export { default, revalidate } from "../page";
 
-export default function WeeklyLogPage() {
-  redirect("/driver?tab=weekly-log");
-}
 

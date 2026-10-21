@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { bookCarAction, cancelBookingAction, cancelUserBookingAction } from "@/actions/driver-trips";
-import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2, Headphones, PhoneCall, MessageCircle, Mail, ShieldAlert, AlertTriangle, XCircle } from "lucide-react";
+import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2, Headphones, PhoneCall, MessageCircle, Mail, ShieldAlert, AlertTriangle, XCircle, Shield, UserCheck, Search, Filter } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useTranslation } from "@/components/layout/language-provider";
 import { useRouter } from "next/navigation";
@@ -28,6 +28,7 @@ interface DriverDashboardClientProps {
   todayBookings: Trip[];
   logs?: WeeklyLog[];
   matrixData?: PerformanceMatrixData;
+  driverBookings?: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
 }
 
 export function DriverDashboardClient({
@@ -40,6 +41,7 @@ export function DriverDashboardClient({
   todayBookings,
   logs = [],
   matrixData,
+  driverBookings,
 }: DriverDashboardClientProps) {
   const { t } = useTranslation();
   const [isPending, startTransition] = useTransition();
@@ -87,6 +89,8 @@ export function DriverDashboardClient({
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<string | null>(null);
   const [supportBooking, setSupportBooking] = useState<any | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<"ALL" | "UPCOMING" | "ADMIN" | "DRIVER" | "COMPLETED" | "CANCELLED">("ALL");
+  const [historySearch, setHistorySearch] = useState("");
 
   const [hoveredImage, setHoveredImage] = useState<string | null>(null);
 
@@ -1386,151 +1390,430 @@ export function DriverDashboardClient({
       </Card>
       )}
 
-      {/* My Upcoming Bookings */}
-      <div className="space-y-3 w-full text-foreground">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-lg font-bold">
-            <Calendar className="h-5 w-5 text-primary" />
-            <span>{t("my_bookings_schedule")}</span>
-          </div>
-          <p className="text-xs text-muted-foreground">{t("bookings_schedule_desc")}</p>
-        </div>
+      {/* Booking History & Schedule */}
+      {(() => {
+        const now = new Date();
+        const allHistoryBookings = (() => {
+          const base = driverBookings && driverBookings.length > 0 ? driverBookings : bookings.filter((b) => b.driverId === driver.id);
+          const map = new Map<string, typeof base[0]>();
+          base.forEach((b) => map.set(b.id, b));
+          return Array.from(map.values()).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+        })();
 
-        <div className="space-y-4 max-h-[700px] overflow-y-auto pr-1">
-          {bookings
-            .filter((b) => b.driverId === driver.id && b.status !== "COMPLETED" && b.status !== "CANCELLED")
-            .map((b) => {
-              const now = new Date();
-              const startTime = new Date(b.startTime);
-              const diffHours = (startTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-              const canCancelDirectly = diffHours >= 12;
+        const upcomingCount = allHistoryBookings.filter(
+          (b) => b.status !== "COMPLETED" && b.status !== "CANCELLED" && new Date(b.endTime) >= now
+        ).length;
 
-              return (
-                <div key={b.id} className="rounded-3xl border border-border/70 bg-card p-4 sm:p-5 space-y-4 shadow-xs">
-                  {/* Trip Header & Badges */}
-                  <div className="space-y-2.5">
-                    <h3 className="text-2xl font-black text-amber-500 tracking-tight">{b.tripNumber}</h3>
-                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto pb-0.5">
-                      {!canCancelDirectly && (
-                        <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/80 bg-amber-50/80 dark:bg-amber-950/40 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap shrink-0">
-                          <Clock className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                          <span>&lt;12h to start</span>
+        const adminCount = allHistoryBookings.filter(
+          (b) => b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN"))
+        ).length;
+
+        const driverCount = allHistoryBookings.filter(
+          (b) => !(b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN")))
+        ).length;
+
+        const completedCount = allHistoryBookings.filter(
+          (b) => b.status === "COMPLETED" || (b.status !== "CANCELLED" && new Date(b.endTime) < now)
+        ).length;
+
+        const cancelledCount = allHistoryBookings.filter((b) => b.status === "CANCELLED").length;
+
+        const filteredHistory = allHistoryBookings.filter((b) => {
+          if (historyFilter === "UPCOMING") {
+            if (b.status === "COMPLETED" || b.status === "CANCELLED" || new Date(b.endTime) < now) return false;
+          } else if (historyFilter === "ADMIN") {
+            const isAdmin = b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN"));
+            if (!isAdmin) return false;
+          } else if (historyFilter === "DRIVER") {
+            const isAdmin = b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN"));
+            if (isAdmin) return false;
+          } else if (historyFilter === "COMPLETED") {
+            if (b.status !== "COMPLETED" && !(b.status !== "CANCELLED" && new Date(b.endTime) < now)) return false;
+          } else if (historyFilter === "CANCELLED") {
+            if (b.status !== "CANCELLED") return false;
+          }
+
+          if (historySearch.trim()) {
+            const q = historySearch.toLowerCase();
+            const matchTrip = (b.tripNumber || "").toLowerCase().includes(q);
+            const matchVehicle = (b.vehicle?.name || "").toLowerCase().includes(q) || (b.vehicle?.vehicleNumber || "").toLowerCase().includes(q);
+            const matchLoc = (b.pickup || "").toLowerCase().includes(q) || (b.destination || "").toLowerCase().includes(q);
+            const matchPurpose = (b.purpose || "").toLowerCase().includes(q);
+            if (!matchTrip && !matchVehicle && !matchLoc && !matchPurpose) return false;
+          }
+
+          return true;
+        });
+
+        return (
+          <div className="space-y-4 w-full text-foreground">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/30 pb-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-lg sm:text-xl font-bold">
+                  <Calendar className="h-5 w-5 text-primary" />
+                  <span>{t("my_bookings_schedule")}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  View your complete booking history — including admin-assigned duties and self-booked slots.
+                </p>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search history & fleet..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="pl-9 h-9 text-xs bg-card"
+                />
+              </div>
+            </div>
+
+            {/* Filter Tabs (All, Upcoming, Admin Assigned, Driver Booked, Completed, Cancelled) */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setHistoryFilter("ALL")}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                  historyFilter === "ALL"
+                    ? "bg-primary text-white shadow-xs"
+                    : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                )}
+              >
+                <span>All History</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-md text-[10px]",
+                  historyFilter === "ALL" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                )}>
+                  {allHistoryBookings.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter("UPCOMING")}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                  historyFilter === "UPCOMING"
+                    ? "bg-amber-500 text-zinc-950 shadow-xs"
+                    : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                )}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <span>Upcoming</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-md text-[10px]",
+                  historyFilter === "UPCOMING" ? "bg-black/15 text-zinc-950 font-black" : "bg-muted text-muted-foreground"
+                )}>
+                  {upcomingCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter("ADMIN")}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                  historyFilter === "ADMIN"
+                    ? "bg-purple-600 text-white shadow-xs"
+                    : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                )}
+              >
+                <ShieldAlert className="h-3.5 w-3.5" />
+                <span>Admin Assigned</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-md text-[10px]",
+                  historyFilter === "ADMIN" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                )}>
+                  {adminCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter("DRIVER")}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                  historyFilter === "DRIVER"
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                )}
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                <span>Driver Booked</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-md text-[10px]",
+                  historyFilter === "DRIVER" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                )}>
+                  {driverCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter("COMPLETED")}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                  historyFilter === "COMPLETED"
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                )}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Completed</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-md text-[10px]",
+                  historyFilter === "COMPLETED" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                )}>
+                  {completedCount}
+                </span>
+              </button>
+
+              {cancelledCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setHistoryFilter("CANCELLED")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                    historyFilter === "CANCELLED"
+                      ? "bg-red-600 text-white shadow-xs"
+                      : "bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/50"
+                  )}
+                >
+                  <XCircle className="h-3.5 w-3.5" />
+                  <span>Cancelled</span>
+                  <span className={cn(
+                    "px-1.5 py-0.2 rounded-md text-[10px]",
+                    historyFilter === "CANCELLED" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                  )}>
+                    {cancelledCount}
+                  </span>
+                </button>
+              )}
+            </div>
+
+            {/* List of Bookings / History */}
+            <div className="space-y-4 max-h-[750px] overflow-y-auto pr-1">
+              {filteredHistory.map((b) => {
+                const bStartTime = new Date(b.startTime);
+                const bEndTime = new Date(b.endTime);
+                const isPast = bEndTime < now;
+                const isUpcoming = !isPast && b.status !== "COMPLETED" && b.status !== "CANCELLED";
+                const diffHours = (bStartTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+                const canCancelDirectly = diffHours >= 12 && isUpcoming;
+                const isAdmin = b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN"));
+
+                return (
+                  <div key={b.id} className="rounded-3xl border border-border/70 bg-card p-4 sm:p-5 space-y-4 shadow-xs transition-all hover:border-primary/40">
+                    {/* Trip Header & Badges */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <h3 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
+                          {b.tripNumber}
+                        </h3>
+
+                        {/* Admin Assigned vs Driver Booked Tag */}
+                        {isAdmin ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-0.5 text-xs font-black text-purple-600 dark:text-purple-400 uppercase tracking-wide">
+                            <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+                            <span>Admin Assigned</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-0.5 text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-wide">
+                            <UserCheck className="h-3.5 w-3.5 shrink-0" />
+                            <span>Driver Booked</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Status Badges */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isUpcoming && !canCancelDirectly && (
+                          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/80 bg-amber-50/80 dark:bg-amber-950/40 px-3 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap shrink-0">
+                            <Clock className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                            <span>&lt;12h to start</span>
+                          </div>
+                        )}
+
+                        <div className={cn(
+                          "inline-flex items-center rounded-full px-3.5 py-0.5 text-xs font-extrabold tracking-wide uppercase whitespace-nowrap shrink-0 border",
+                          b.status === "COMPLETED" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400" :
+                          b.status === "CANCELLED" ? "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400" :
+                          b.status === "IN_PROGRESS" ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400" :
+                          "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                        )}>
+                          {b.status}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Vehicle Card */}
+                    <div className="rounded-2xl border border-border/70 bg-muted/10 p-3 sm:p-3.5 flex items-center gap-3.5 shadow-xs">
+                      {(b.vehicle as any)?.imageUrl ? (
+                        <img 
+                          src={(b.vehicle as any).imageUrl} 
+                          alt={b.vehicle?.name} 
+                          className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl object-cover border border-border shrink-0 cursor-zoom-in" 
+                          loading="lazy"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActivePreviewImage((b.vehicle as any).imageUrl);
+                          }}
+                          onMouseEnter={() => handleMouseEnter((b.vehicle as any).imageUrl)}
+                          onMouseLeave={handleMouseLeave}
+                          onMouseMove={handleMouseMove}
+                        />
+                      ) : (
+                        <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl bg-muted flex items-center justify-center border border-border shrink-0">
+                          <Truck className="h-8 w-8 text-muted-foreground" />
                         </div>
                       )}
-                      <div className="inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/40 px-4 py-1 text-xs font-extrabold text-amber-700 dark:text-amber-300 tracking-wide uppercase whitespace-nowrap shrink-0">
-                        {b.status}
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-base sm:text-lg text-foreground leading-snug truncate">
+                          {b.vehicle?.name || "Vehicle"}
+                        </h4>
+                        <p className="text-xs sm:text-sm font-semibold font-mono text-muted-foreground mt-0.5 truncate">
+                          ({b.vehicle?.vehicleNumber || "—"})
+                        </p>
+                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs sm:text-sm font-medium text-muted-foreground mt-1.5">
+                          <span className="text-foreground/90 font-medium break-words">{b.pickup}</span>
+                          <span className="text-primary font-bold text-xs sm:text-sm leading-none shrink-0">➔</span>
+                          <span className="text-foreground/90 font-medium break-words">{b.destination}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Vehicle Card */}
-                  <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-3.5 flex items-center gap-3.5 shadow-xs">
-                    {(b.vehicle as any)?.imageUrl ? (
-                      <img 
-                        src={(b.vehicle as any).imageUrl} 
-                        alt={b.vehicle?.name} 
-                        className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl object-cover border border-border shrink-0 cursor-zoom-in" 
-                        loading="lazy"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActivePreviewImage((b.vehicle as any).imageUrl);
-                        }}
-                        onMouseEnter={() => handleMouseEnter((b.vehicle as any).imageUrl)}
-                        onMouseLeave={handleMouseLeave}
-                        onMouseMove={handleMouseMove}
-                      />
-                    ) : (
-                      <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl bg-muted flex items-center justify-center border border-border shrink-0">
-                        <Truck className="h-8 w-8 text-muted-foreground" />
+                    {/* Time & Date Card */}
+                    <div className="rounded-2xl border border-border/70 bg-card p-3.5 sm:p-4 space-y-2.5 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                            <Clock className="h-4 w-4 text-amber-500 stroke-[2.5]" />
+                          </div>
+                          <span className="font-extrabold text-base sm:text-lg text-foreground tracking-tight">
+                            {mounted ? `${bStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} – ${bEndTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}` : ""}
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          {((bEndTime.getTime() - bStartTime.getTime()) / (1000 * 60 * 60)).toFixed(1)} hrs
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                          <Calendar className="h-5 w-5 text-muted-foreground/80 shrink-0" />
+                        </div>
+                        <span className="font-semibold text-sm sm:text-base text-muted-foreground">
+                          {mounted ? bStartTime.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : ""}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Purpose and Notes */}
+                    {(b.purpose || b.notes) && (
+                      <div className="text-xs text-muted-foreground bg-muted/20 rounded-xl p-2.5 space-y-1">
+                        {b.purpose && <div><span className="font-semibold text-foreground">Purpose:</span> {b.purpose}</div>}
+                        {b.notes && <div><span className="font-semibold text-foreground">Notes:</span> {b.notes}</div>}
                       </div>
                     )}
-                    <div className="min-w-0 flex-1">
-                      <h4 className="font-bold text-base sm:text-lg text-foreground leading-snug truncate">
-                        {b.vehicle?.name || "Vehicle"}
-                      </h4>
-                      <p className="text-xs sm:text-sm font-semibold text-muted-foreground mt-0.5 truncate">
-                        ({b.vehicle?.vehicleNumber || "—"})
-                      </p>
-                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs sm:text-sm font-medium text-muted-foreground mt-1.5">
-                        <span className="text-foreground/90 font-medium break-words">{b.pickup}</span>
-                        <span className="text-primary font-bold text-xs sm:text-sm leading-none shrink-0">➔</span>
-                        <span className="text-foreground/90 font-medium break-words">{b.destination}</span>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Time & Date Card */}
-                  <div className="rounded-2xl border border-border/70 bg-card p-3.5 sm:p-4 space-y-2.5 shadow-xs">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
-                        <Clock className="h-4 w-4 text-amber-500 stroke-[2.5]" />
-                      </div>
-                      <span className="font-extrabold text-base sm:text-lg text-foreground tracking-tight">
-                        {mounted ? `${new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} – ${new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}` : ""}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 flex items-center justify-center shrink-0">
-                        <Calendar className="h-5 w-5 text-muted-foreground/80 shrink-0" />
-                      </div>
-                      <span className="font-semibold text-sm sm:text-base text-muted-foreground">
-                        {mounted ? new Date(b.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : ""}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Action Button */}
-                  {canCancelDirectly ? (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (confirm("Are you sure you want to cancel this booking?")) {
-                          startTransition(async () => {
-                            const res = await cancelUserBookingAction(b.id);
-                            if (res.error) {
-                              if (res.requiresSupport) {
-                                setSupportBooking(b);
-                              } else {
-                                alert(res.error);
-                              }
-                            } else {
-                              router.refresh();
+                    {/* Action Button for Upcoming Bookings */}
+                    {isUpcoming && (
+                      canCancelDirectly ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (confirm("Are you sure you want to cancel this booking?")) {
+                              startTransition(async () => {
+                                const res = await cancelUserBookingAction(b.id);
+                                if (res.error) {
+                                  if (res.requiresSupport) {
+                                    setSupportBooking(b);
+                                  } else {
+                                    alert(res.error);
+                                  }
+                                } else {
+                                  router.refresh();
+                                }
+                              });
                             }
-                          });
-                        }
-                      }}
-                      disabled={isPending}
-                      className="w-full rounded-2xl border border-red-400/80 bg-red-50/60 hover:bg-red-100/70 dark:bg-red-950/20 dark:hover:bg-red-900/30 py-3 px-3 sm:px-4 flex items-center justify-center gap-2 sm:gap-2.5 transition-all cursor-pointer shadow-xs active:scale-[0.99] disabled:opacity-50"
-                    >
-                      <XCircle className="h-5 w-5 text-red-500 shrink-0" />
-                      <div className="h-4 sm:h-5 w-px bg-red-300 dark:bg-red-700 shrink-0" />
-                      <span className="text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm whitespace-nowrap">
-                        Cancel Booking
-                      </span>
-                    </button>
-                  ) : (
-                    <button
+                          }}
+                          disabled={isPending}
+                          className="w-full rounded-2xl border border-red-400/80 bg-red-50/60 hover:bg-red-100/70 dark:bg-red-950/20 dark:hover:bg-red-900/30 py-3 px-3 sm:px-4 flex items-center justify-center gap-2 sm:gap-2.5 transition-all cursor-pointer shadow-xs active:scale-[0.99] disabled:opacity-50"
+                        >
+                          <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                          <div className="h-4 sm:h-5 w-px bg-red-300 dark:bg-red-700 shrink-0" />
+                          <span className="text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm whitespace-nowrap">
+                            Cancel Booking
+                          </span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSupportBooking(b)}
+                          className="w-full rounded-2xl border border-amber-400 bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/20 dark:hover:bg-amber-900/30 py-3 px-3 sm:px-4 flex items-center justify-center gap-2 sm:gap-2.5 transition-all cursor-pointer shadow-xs active:scale-[0.99]"
+                        >
+                          <Headphones className="h-5 w-5 text-amber-500 shrink-0" />
+                          <div className="h-4 sm:h-5 w-px bg-amber-300 dark:bg-amber-700 shrink-0" />
+                          <span className="text-amber-600 dark:text-amber-400 font-bold text-[11px] min-[370px]:text-xs sm:text-sm whitespace-nowrap">
+                            Contact Admin Support to Cancel
+                          </span>
+                        </button>
+                      )
+                    )}
+
+                    {/* Completed indicator */}
+                    {b.status === "COMPLETED" && (
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        <span>Completed Duty · Vehicle safely returned</span>
+                      </div>
+                    )}
+
+                    {/* Cancelled indicator */}
+                    {b.status === "CANCELLED" && (
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-semibold">
+                        <XCircle className="h-4 w-4 shrink-0" />
+                        <span>Booking Cancelled</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {filteredHistory.length === 0 && (
+                <div className="text-center py-10 px-4 border border-dashed border-border/70 rounded-3xl bg-card space-y-2.5">
+                  <Calendar className="h-8 w-8 text-muted-foreground/50 mx-auto" />
+                  <p className="text-sm font-semibold text-foreground">
+                    {historyFilter === "UPCOMING" ? t("no_upcoming_bookings") : "No bookings found in this category"}
+                  </p>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                    {historyFilter !== "ALL"
+                      ? "Try switching to another filter tab to view all bookings and duty history."
+                      : "You have not made or been assigned any vehicle bookings yet."}
+                  </p>
+                  {historyFilter !== "ALL" && (
+                    <Button
                       type="button"
-                      onClick={() => setSupportBooking(b)}
-                      className="w-full rounded-2xl border border-amber-400 bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/20 dark:hover:bg-amber-900/30 py-3 px-3 sm:px-4 flex items-center justify-center gap-2 sm:gap-2.5 transition-all cursor-pointer shadow-xs active:scale-[0.99]"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setHistoryFilter("ALL");
+                        setHistorySearch("");
+                      }}
+                      className="mt-1 text-xs"
                     >
-                      <Headphones className="h-5 w-5 text-amber-500 shrink-0" />
-                      <div className="h-4 sm:h-5 w-px bg-amber-300 dark:bg-amber-700 shrink-0" />
-                      <span className="text-amber-600 dark:text-amber-400 font-bold text-[11px] min-[370px]:text-xs sm:text-sm whitespace-nowrap">
-                        Contact Admin Support to Cancel
-                      </span>
-                    </button>
+                      View All History
+                    </Button>
                   )}
                 </div>
-              );
-            })}
-          {bookings.filter((b) => b.driverId === driver.id && b.status !== "COMPLETED" && b.status !== "CANCELLED").length === 0 && (
-            <p className="text-xs text-muted-foreground text-center italic py-8 border border-dashed border-border/70 rounded-2xl bg-card">
-              {t("no_upcoming_bookings")}
-            </p>
-          )}
-        </div>
-      </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Contact Support Cancellation Modal */}
       {supportBooking && (

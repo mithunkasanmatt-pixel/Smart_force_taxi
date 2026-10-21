@@ -10,6 +10,9 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  connectionTimeout: 5000,
+  greetingTimeout: 5000,
+  socketTimeout: 5000,
 });
 
 /**
@@ -770,15 +773,19 @@ Smart Force Taxi Operations System`;
   }
 }
 
+export type LicenseExpiryTier = "6_MONTH" | "1_MONTH" | "1_WEEK" | "EXPIRED";
+
 /**
- * Sends taxi license expiry notification email to a driver
+ * Sends taxi license expiry notification email to a driver with tiered urgency & schedules
  */
 export async function sendLicenseExpiryEmail(
   email: string,
   name: string,
   licenseNumber: string,
   expiryDate: Date,
-  daysRemaining: number
+  daysRemaining: number,
+  tier: LicenseExpiryTier = "6_MONTH",
+  slotLabel?: string
 ) {
   const from = process.env.SMTP_FROM || `"Smart Force Taxi" <noreply@smartforcetaxi.com>`;
   const formattedDate = expiryDate.toLocaleDateString("en-US", {
@@ -787,59 +794,121 @@ export async function sendLicenseExpiryEmail(
     day: "numeric",
   });
 
-  const isExpired = daysRemaining < 0;
-  const statusTitle = isExpired ? "Taxi License Expired Alert" : "Taxi License Expiry Notice";
-  const subject = `[URGENT] ${statusTitle} - Smart Force Taxi`;
+  const monthsRemaining = Math.max(1, Math.round(daysRemaining / 30));
 
-  const statusMessage = isExpired
-    ? `Your taxi license (No. ${licenseNumber || "N/A"}) expired ${Math.abs(daysRemaining)} days ago on ${formattedDate}.`
-    : `Your taxi license (No. ${licenseNumber || "N/A"}) is set to expire in ${daysRemaining} day(s) on ${formattedDate}.`;
+  let subject = "";
+  let statusTitle = "";
+  let headerBg = "#0284c7"; // Blue
+  let badgeText = "";
+  let statusMessage = "";
+  let actionInstruction = "";
+  let urgencyPill = "";
 
-  const actionInstruction = isExpired
-    ? "Please renew your taxi license immediately and submit updated proof to the management team. You cannot operate fleet vehicles with an expired license."
-    : "Please take immediate steps to renew your license before the expiration date to avoid service disruption.";
+  switch (tier) {
+    case "1_WEEK":
+      subject = `[CRITICAL ALERT] Taxi License Expiring in ${daysRemaining} Day(s) - Immediate Action Required - Smart Force Taxi`;
+      statusTitle = "CRITICAL: Taxi License Expiring in 1 Week";
+      headerBg = "#dc2626"; // Red
+      badgeText = "1-WEEK FINAL NOTICE • 9:00 AM, 12:00 PM & 6:00 PM DISPATCH";
+      urgencyPill = "CRITICAL - 3X DAILY ALERT";
+      statusMessage = `CRITICAL WARNING: Your taxi license (No. ${licenseNumber || "N/A"}) will expire in only ${daysRemaining} day(s) on ${formattedDate}!`;
+      actionInstruction = `Your license expires within the next week. Once expired, your driver account will be immediately deactivated and placed in OFFLINE status. You will not be allowed to accept duty assignments or book vehicles. Please renew and submit your license document immediately.`;
+      break;
+
+    case "1_MONTH":
+      subject = `[URGENT] Taxi License Expiring in ${daysRemaining} Days (1 Month Alert) - Smart Force Taxi`;
+      statusTitle = "URGENT: Taxi License Expiring in 1 Month";
+      headerBg = "#ea580c"; // Orange
+      badgeText = "1-MONTH URGENT NOTICE • 9:00 AM & 6:00 PM DISPATCH";
+      urgencyPill = "URGENT - 2X DAILY ALERT";
+      statusMessage = `URGENT NOTICE: Your taxi license (No. ${licenseNumber || "N/A"}) will expire in ${daysRemaining} day(s) on ${formattedDate}.`;
+      actionInstruction = `You have less than 1 month remaining before license expiration. Please complete your renewal and submit your updated credentials right away to avoid service suspension.`;
+      break;
+
+    case "EXPIRED":
+      subject = `[ACCOUNT DEACTIVATED] Taxi License Expired - Smart Force Taxi`;
+      statusTitle = "Taxi License Expired - Account Deactivated";
+      headerBg = "#991b1b"; // Dark red
+      badgeText = "EXPIRED • ACCOUNT STATUS OFFLINE";
+      urgencyPill = "EXPIRED - SUSPENDED";
+      statusMessage = `Your taxi license (No. ${licenseNumber || "N/A"}) expired on ${formattedDate}.`;
+      actionInstruction = `Under fleet safety regulations, your account has been deactivated and set to OFFLINE status. You cannot operate fleet vehicles with an expired license. Please renew your license and contact Fleet Management immediately.`;
+      break;
+
+    case "6_MONTH":
+    default:
+      subject = `Taxi License Expiry Alert: You have ${monthsRemaining} Months Remaining - Smart Force Taxi`;
+      statusTitle = "Taxi License Expiry Notice (6 Months Alert)";
+      headerBg = "#0284c7"; // Blue
+      badgeText = "6-MONTH NOTICE • 9:00 AM DAILY DISPATCH";
+      urgencyPill = "EARLY NOTICE - DAILY 9:00 AM";
+      statusMessage = `License Expiry Alert: Your taxi license (No. ${licenseNumber || "N/A"}) is going to expire in approximately ${monthsRemaining} month(s) (${daysRemaining} days) on ${formattedDate}.`;
+      actionInstruction = `You have approximately ${monthsRemaining} month(s) remaining before your license expires. Please initiate the renewal process with your transport authority early to ensure continuous, uninterrupted driving authorization.`;
+      break;
+  }
 
   const text = `Hello ${name},
 
 ${statusTitle}
+Schedule: ${badgeText}
 
 ${statusMessage}
 
 ${actionInstruction}
 
+License Number: ${licenseNumber || "N/A"}
+Expiry Date: ${formattedDate}
+Status: ${tier === "EXPIRED" ? "EXPIRED" : `${daysRemaining} Days Remaining (${urgencyPill})`}
+
 Best regards,
 Smart Force Taxi Fleet Safety & Operations`;
 
-  const html = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; border-radius: 8px;">
-    <div style="background-color: ${isExpired ? "#ef4444" : "#f59e0b"}; padding: 15px; border-radius: 6px; text-align: center; color: white;">
-      <h2 style="margin: 0; font-size: 20px;">${statusTitle}</h2>
+  const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e4e4e7; border-radius: 12px; background-color: #ffffff;">
+    <div style="background-color: ${headerBg}; padding: 20px; border-radius: 8px; text-align: center; color: #ffffff;">
+      <span style="display: inline-block; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; text-transform: uppercase; background: rgba(255,255,255,0.22); padding: 4px 10px; border-radius: 12px; margin-bottom: 8px;">
+        ${badgeText}
+      </span>
+      <h2 style="margin: 0; font-size: 20px; font-weight: 700; line-height: 1.3;">${statusTitle}</h2>
     </div>
-    <div style="padding: 20px 0;">
-      <p style="font-size: 16px; color: #18181b;">Hello <strong>${name}</strong>,</p>
-      <p style="font-size: 15px; color: #3f3f46; line-height: 1.5;">${statusMessage}</p>
+
+    <div style="padding: 24px 0 16px 0;">
+      <p style="font-size: 16px; color: #18181b; margin-top: 0;">Hello <strong>${name}</strong>,</p>
+      <p style="font-size: 15px; color: #3f3f46; line-height: 1.6;">${statusMessage}</p>
       
-      <div style="background-color: #f4f4f5; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${isExpired ? "#ef4444" : "#f59e0b"};">
-        <h4 style="margin: 0 0 8px 0; color: #18181b;">Action Required:</h4>
-        <p style="margin: 0; color: #52525b; font-size: 14px;">${actionInstruction}</p>
+      <div style="background-color: #f8fafc; padding: 16px 18px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${headerBg};">
+        <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">Action Required:</h4>
+        <p style="margin: 0; color: #334155; font-size: 14px; line-height: 1.5;">${actionInstruction}</p>
       </div>
 
-      <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-        <tr>
-          <td style="padding: 6px 0; font-weight: bold; color: #71717a;">License Number:</td>
-          <td style="padding: 6px 0; font-family: monospace;">${licenseNumber || "N/A"}</td>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 14px;">
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 8px 0; font-weight: 600; color: #64748b;">License Number:</td>
+          <td style="padding: 8px 0; font-family: monospace; font-size: 15px; font-weight: 600; color: #0f172a;">${licenseNumber || "N/A"}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 8px 0; font-weight: 600; color: #64748b;">Expiry Date:</td>
+          <td style="padding: 8px 0; font-weight: 700; color: ${headerBg};">${formattedDate}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 8px 0; font-weight: 600; color: #64748b;">Time Remaining:</td>
+          <td style="padding: 8px 0; font-weight: 700; color: #0f172a;">
+            ${tier === "EXPIRED" ? '<span style="color:#dc2626;">EXPIRED</span>' : `${daysRemaining} Day(s) (approx. ${monthsRemaining} month(s))`}
+          </td>
         </tr>
         <tr>
-          <td style="padding: 6px 0; font-weight: bold; color: #71717a;">Expiry Date:</td>
-          <td style="padding: 6px 0; font-weight: bold; color: ${isExpired ? "#ef4444" : "#d97706"};">${formattedDate}</td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; font-weight: bold; color: #71717a;">Status:</td>
-          <td style="padding: 6px 0; font-weight: bold;">${isExpired ? "EXPIRED" : `${daysRemaining} Days Remaining`}</td>
+          <td style="padding: 8px 0; font-weight: 600; color: #64748b;">Notification Tier:</td>
+          <td style="padding: 8px 0;">
+            <span style="display: inline-block; background-color: #f1f5f9; color: #334155; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 4px;">
+              ${urgencyPill}${slotLabel ? ` (${slotLabel})` : ""}
+            </span>
+          </td>
         </tr>
       </table>
     </div>
-    <p style="font-size: 12px; color: #a1a1aa; margin-top: 30px; border-top: 1px solid #e4e4e7; padding-top: 15px;">
-      This is an automated fleet management notification. If you have already renewed your license, please contact your Fleet Manager.
+
+    <p style="font-size: 12px; color: #94a3b8; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px; line-height: 1.5;">
+      This is an automated safety alert dispatched by <strong>Smart Force Taxi Operations</strong>.<br />
+      If you have already renewed and submitted your updated license, please notify your Fleet Manager to update your profile.
     </p>
   </div>`;
 
@@ -851,7 +920,7 @@ Smart Force Taxi Fleet Safety & Operations`;
       text,
       html,
     });
-    console.log(`License expiry email sent successfully to: ${email}`);
+    console.log(`License expiry email sent successfully to ${email} (tier: ${tier}, slot: ${slotLabel || "auto"})`);
     return { success: true };
   } catch (error) {
     console.error("Failed to send license expiry email:", error);
@@ -873,6 +942,9 @@ export function getSixMonthsBefore(expiryDate: Date): Date {
   return warningStart;
 }
 
+/**
+ * Helper function to calculate exactly one month before a given expiry date, handling month boundary edge cases.
+ */
 export function getOneMonthBefore(expiryDate: Date): Date {
   const warningStart = new Date(expiryDate);
   const targetMonth = warningStart.getMonth() - 1;
@@ -885,38 +957,86 @@ export function getOneMonthBefore(expiryDate: Date): Date {
 }
 
 /**
- * Scans drivers and dispatches website & email notifications for licenses expiring soon:
- * 1. 6 months to 1 month before expiry: Once daily at 9:00 AM.
- * 2. 1 month before expiry: 3 times daily (9:00 AM, 1:00 PM, 9:00 PM).
- * 3. Once expired: Automatically deactivates the driver account and blocks future notifications.
+ * Helper function to calculate exactly one week (7 days) before a given expiry date.
  */
-export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, forceSend: boolean = false) {
+export function getOneWeekBefore(expiryDate: Date): Date {
+  const warningStart = new Date(expiryDate);
+  warningStart.setDate(warningStart.getDate() - 7);
+  return warningStart;
+}
+
+/**
+ * Scans drivers and dispatches website & email notifications for licenses expiring soon:
+ * 1. Category 1 (6 Months to 1 Month): Once daily morning at 9:00 AM.
+ *    Alert message: "License going to expire, you have X months remaining"
+ * 2. Category 2 (1 Month to 1 Week): Twice daily at 9:00 AM and 6:00 PM.
+ *    Alert message: "URGENT: License expiring in X days (1 month warning)"
+ * 3. Category 3 (1 Week to Expiry): Three times daily at 9:00 AM, 12:00 PM (noon), and 6:00 PM.
+ *    Alert message: "CRITICAL: License expiring in X days (1 week final notice, deactivation warning)"
+ * 4. Expired: Driver account is automatically deactivated (OFFLINE) and notification is sent.
+ */
+export async function checkAndNotifyLicenseExpiry(
+  specificDriverId?: string,
+  forceSend: boolean = false,
+  slotOverride?: string
+) {
   try {
     const { db } = await import("@/lib/db");
     const now = new Date();
     const hours = now.getHours();
 
     // Determine current notification time slot:
-    // Slot 1 (9:00 AM): 09:00 to 12:59
-    // Slot 2 (1:00 PM): 13:00 to 20:59
-    // Slot 3 (9:00 PM): 21:00 to 23:59 or 00:00 to 08:59
+    // Slot 1 (9:00 AM): 09:00 to 11:59
+    // Slot 2 (12:00 PM): 12:00 to 17:59
+    // Slot 3 (6:00 PM / 18:00): 18:00 to 22:59
     let currentSlot = "";
     const slotStartTime = new Date(now);
 
-    if (hours >= 9 && hours < 13) {
+    if (slotOverride) {
+      const normalized = slotOverride.trim().toUpperCase();
+      if (normalized === "9AM" || normalized === "09:00" || normalized === "9") {
+        currentSlot = "9AM";
+        slotStartTime.setHours(9, 0, 0, 0);
+      } else if (normalized === "12PM" || normalized === "12:00" || normalized === "12") {
+        currentSlot = "12PM";
+        slotStartTime.setHours(12, 0, 0, 0);
+      } else if (normalized === "6PM" || normalized === "18:00" || normalized === "18" || normalized === "6") {
+        currentSlot = "6PM";
+        slotStartTime.setHours(18, 0, 0, 0);
+      } else {
+        currentSlot = normalized;
+      }
+    } else {
+      if (hours >= 9 && hours < 12) {
+        currentSlot = "9AM";
+        slotStartTime.setHours(9, 0, 0, 0);
+      } else if (hours >= 12 && hours < 18) {
+        currentSlot = "12PM";
+        slotStartTime.setHours(12, 0, 0, 0);
+      } else if (hours >= 18 && hours < 23) {
+        currentSlot = "6PM";
+        slotStartTime.setHours(18, 0, 0, 0);
+      } else {
+        // Outside normal notification hours (23:00 to 08:59)
+        currentSlot = "OFF_HOURS";
+      }
+    }
+
+    // If outside notification hours and not forced, exit gracefully without dispatching
+    if (currentSlot === "OFF_HOURS" && !forceSend) {
+      return {
+        success: true,
+        message: "Outside scheduled notification windows (9:00 AM, 12:00 PM, 6:00 PM)",
+        slot: currentSlot,
+        notifiedCount: 0,
+        deactivatedCount: 0,
+      };
+    }
+
+    // Fallback slot for forced executions outside regular hours
+    if (!currentSlot || currentSlot === "OFF_HOURS") {
       currentSlot = "9AM";
       slotStartTime.setHours(9, 0, 0, 0);
-    } else if (hours >= 13 && hours < 21) {
-      currentSlot = "1PM";
-      slotStartTime.setHours(13, 0, 0, 0);
-    } else if (hours >= 21 || hours < 9) {
-      currentSlot = "9PM";
-      if (hours >= 21) {
-        slotStartTime.setHours(21, 0, 0, 0);
-      } else {
-        slotStartTime.setDate(slotStartTime.getDate() - 1);
-        slotStartTime.setHours(21, 0, 0, 0);
-      }
     }
 
     const whereCondition: any = {
@@ -941,9 +1061,20 @@ export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, for
       if (!driver.licenseExpiry) continue;
 
       const expiryDate = new Date(driver.licenseExpiry);
+      const endOfExpiryDay = new Date(expiryDate);
+      endOfExpiryDay.setHours(23, 59, 59, 999);
+
+      const diffTime = expiryDate.getTime() - now.getTime();
+      const daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+
+      const formattedExpiryDate = expiryDate.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
 
       // 1. If driver license has expired, automatically deactivate driver account
-      if (now > expiryDate) {
+      if (now > endOfExpiryDay) {
         if (driver.status !== "OFFLINE") {
           await db.user.update({
             where: { id: driver.id },
@@ -951,32 +1082,99 @@ export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, for
           });
           deactivatedCount++;
         }
-        continue; // Do not send pre-expiry reminder emails once expired
+
+        // Send expired notification once per day (or if forced)
+        const startOfToday = new Date(now);
+        startOfToday.setHours(0, 0, 0, 0);
+
+        const expiredNotifCount = await db.notification.count({
+          where: {
+            userId: driver.id,
+            type: "LICENSE_EXPIRED",
+            createdAt: {
+              gte: startOfToday,
+            },
+          },
+        });
+
+        if (expiredNotifCount === 0 || forceSend) {
+          const title = "License Expired - Account Deactivated";
+          const message = `Your taxi driving license (No. ${driver.licenseNumber || "N/A"}) expired on ${formattedExpiryDate}. Your driver account has been deactivated and set to OFFLINE status. Please renew your license and contact Fleet Management to reactivate.`;
+
+          await db.notification.create({
+            data: {
+              userId: driver.id,
+              title,
+              message,
+              type: "LICENSE_EXPIRED",
+              isRead: false,
+            },
+          });
+
+          if (driver.email) {
+            await sendLicenseExpiryEmail(
+              driver.email,
+              driver.name,
+              driver.licenseNumber || "",
+              expiryDate,
+              -Math.abs(daysRemaining),
+              "EXPIRED",
+              currentSlot
+            );
+          }
+
+          await db.user.update({
+            where: { id: driver.id },
+            data: { lastExpiryNotifiedAt: now },
+          });
+
+          notifiedCount++;
+        }
+        continue;
       }
 
+      // Pre-expiry windows:
       const warningStartDate = getSixMonthsBefore(expiryDate);
       warningStartDate.setHours(0, 0, 0, 0);
 
       const oneMonthStartDate = getOneMonthBefore(expiryDate);
       oneMonthStartDate.setHours(0, 0, 0, 0);
 
-      // Check range:
-      // Range A: 6 months to 1 month before expiry (9:00 AM slot ONLY)
-      // Range B: 1 month before expiry up to expiry date (9:00 AM, 1:00 PM, 9:00 PM slots)
-      const isIn6MonthWindow = now >= warningStartDate && now < oneMonthStartDate;
-      const isIn1MonthWindow = now >= oneMonthStartDate && now <= expiryDate;
+      const oneWeekStartDate = getOneWeekBefore(expiryDate);
+      oneWeekStartDate.setHours(0, 0, 0, 0);
 
-      if (!isIn6MonthWindow && !isIn1MonthWindow) {
+      // Check tier range:
+      // Tier 1 (6 Months to 1 Month): 9:00 AM slot ONLY
+      // Tier 2 (1 Month to 1 Week): 9:00 AM and 6:00 PM slots
+      // Tier 3 (1 Week to Expiry): 9:00 AM, 12:00 PM, and 6:00 PM slots
+      const isIn6MonthWindow = now >= warningStartDate && now < oneMonthStartDate;
+      const isIn1MonthWindow = now >= oneMonthStartDate && now < oneWeekStartDate;
+      const isIn1WeekWindow = now >= oneWeekStartDate && now <= endOfExpiryDay;
+
+      if (!isIn6MonthWindow && !isIn1MonthWindow && !isIn1WeekWindow) {
         // More than 6 months before expiry
         continue;
       }
 
-      // If in 6-month to 1-month window, send ONLY during the 9:00 AM slot
-      if (isIn6MonthWindow && currentSlot !== "9AM" && !forceSend) {
-        continue;
+      // Check slot eligibility per tier
+      if (!forceSend) {
+        if (isIn6MonthWindow && currentSlot !== "9AM") {
+          // Tier 1 is sent DAILY at 9:00 AM only
+          continue;
+        }
+
+        if (isIn1MonthWindow && currentSlot !== "9AM" && currentSlot !== "6PM") {
+          // Tier 2 is sent TWICE DAILY at 9:00 AM and 6:00 PM only
+          continue;
+        }
+
+        if (isIn1WeekWindow && currentSlot !== "9AM" && currentSlot !== "12PM" && currentSlot !== "6PM") {
+          // Tier 3 is sent 3 TIMES DAILY at 9:00 AM, 12:00 PM, and 6:00 PM
+          continue;
+        }
       }
 
-      // Deduplication check for current time slot unless forceSend is true
+      // Deduplication check for the current scheduled time slot unless forceSend is true
       if (!forceSend) {
         const slotNotificationCount = await db.notification.count({
           where: {
@@ -993,17 +1191,25 @@ export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, for
         }
       }
 
-      const diffTime = expiryDate.getTime() - now.getTime();
-      const daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      // Prepare Tier specific title and message
+      let tier: LicenseExpiryTier = "6_MONTH";
+      let title = "";
+      let message = "";
 
-      const formattedExpiryDate = expiryDate.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-
-      const title = "Taxi License Expiring Soon";
-      const message = `Your taxi license (No. ${driver.licenseNumber || "N/A"}) will expire in ${daysRemaining} day(s) on ${formattedExpiryDate}. Please renew it promptly to prevent disruption to your driving duties.`;
+      if (isIn1WeekWindow) {
+        tier = "1_WEEK";
+        title = `CRITICAL ALERT: License Expiring in ${daysRemaining} Day(s)!`;
+        message = `CRITICAL WARNING: Your taxi license (No. ${driver.licenseNumber || "N/A"}) expires in ${daysRemaining} day(s) on ${formattedExpiryDate}! Once expired, your driver account will be immediately deactivated and placed in OFFLINE status. Please renew right away.`;
+      } else if (isIn1MonthWindow) {
+        tier = "1_MONTH";
+        title = `URGENT: Taxi License Expiring in ${daysRemaining} Days (1 Month Alert)`;
+        message = `URGENT REMINDER: Your taxi license (No. ${driver.licenseNumber || "N/A"}) will expire in ${daysRemaining} day(s) on ${formattedExpiryDate}. You have less than one month remaining. Please complete your renewal promptly to avoid suspension of driving duties.`;
+      } else {
+        tier = "6_MONTH";
+        const monthsRemaining = Math.max(1, Math.round(daysRemaining / 30));
+        title = `Taxi License Expiring Soon (${monthsRemaining} Months Remaining)`;
+        message = `License Expiry Alert: Your taxi license (No. ${driver.licenseNumber || "N/A"}) is going to expire in approximately ${monthsRemaining} month(s) (${daysRemaining} days) on ${formattedExpiryDate}. You have ${monthsRemaining} months remaining to renew your license. Please initiate the renewal process early.`;
+      }
 
       // 1. Create In-Website Notification
       await db.notification.create({
@@ -1023,7 +1229,9 @@ export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, for
           driver.name,
           driver.licenseNumber || "",
           expiryDate,
-          daysRemaining
+          daysRemaining,
+          tier,
+          currentSlot
         );
       }
 
@@ -1036,7 +1244,13 @@ export async function checkAndNotifyLicenseExpiry(specificDriverId?: string, for
       notifiedCount++;
     }
 
-    return { success: true, notifiedCount, deactivatedCount, slot: currentSlot };
+    return {
+      success: true,
+      notifiedCount,
+      deactivatedCount,
+      slot: currentSlot,
+      timestamp: now.toISOString(),
+    };
   } catch (error: any) {
     console.error("Error running checkAndNotifyLicenseExpiry:", error);
     return { error: error.message || "Failed to check license expiry notifications" };
