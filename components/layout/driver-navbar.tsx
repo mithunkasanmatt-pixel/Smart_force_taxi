@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { LayoutDashboard, Truck, CalendarCheck, Receipt, User as UserIcon, Trophy } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarCheck, Receipt, User as UserIcon, Trophy, CalendarDays } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useTranslation } from "@/components/layout/language-provider";
 import { useDriverTab, DriverTab } from "@/components/drivers/driver-portal-context";
@@ -12,11 +12,12 @@ export function DriverNavbar() {
   const { activeTab, setActiveTab } = useDriverTab();
 
   const navLinks = [
-    { id: "dashboard" as const, href: "/driver", label: t("dashboard"), icon: LayoutDashboard },
-    { id: "performance-matrix" as const, href: "/driver/performance", label: "Performance Matrix", icon: Trophy },
-    { id: "vehicles" as const, href: "/driver/available-vehicles", label: t("vehicles"), icon: Truck },
-    { id: "weekly-log" as const, href: "/driver/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
-    { id: "earnings" as const, href: "/driver/earnings", label: "Earnings & Tax", icon: Receipt },
+    { id: "dashboard" as const, href: "/driver", label: t("dashboard"), mobileLabel: "Home", icon: LayoutDashboard },
+    { id: "my-bookings" as const, href: "/driver/bookings", label: "My Bookings", mobileLabel: "Bookings", icon: CalendarDays },
+    { id: "performance-matrix" as const, href: "/driver/performance", label: "Performance Matrix", mobileLabel: "Matrix", icon: Trophy },
+    { id: "vehicles" as const, href: "/driver/available-vehicles", label: t("vehicles"), mobileLabel: "Vehicles", icon: Truck },
+    { id: "weekly-log" as const, href: "/driver/weekly-log", label: t("weekly_log"), mobileLabel: "Logs", icon: CalendarCheck },
+    { id: "earnings" as const, href: "/driver/earnings", label: "Earnings & Tax", mobileLabel: "Earnings", icon: Receipt },
   ];
 
 
@@ -73,8 +74,8 @@ export function DriverNavbar() {
                 <span className="absolute top-0 w-8 h-1 bg-primary rounded-full" />
               )}
               <Icon className={cn("h-5 w-5 shrink-0", isActive && "scale-110 transition-transform")} />
-              <span className="text-[9px] tracking-wider uppercase font-semibold leading-none truncate max-w-[70px]">
-                {link.label}
+              <span className="text-[9px] tracking-tight uppercase font-bold leading-none truncate max-w-[54px]">
+                {link.mobileLabel || link.label}
               </span>
             </Link>
           );

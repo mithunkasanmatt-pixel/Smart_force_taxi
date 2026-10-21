@@ -9,9 +9,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { deleteBookingAction } from "@/actions/driver-trips";
 import { Dialog } from "@/components/ui/dialog";
-import { Search } from "lucide-react";
+import { Search, MapPin } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/components/layout/language-provider";
+import { LocationManagerDialog } from "@/components/admin/location-manager-dialog";
 
 interface BookingHistoryProps {
   bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
@@ -23,6 +24,7 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
+  const [isLocationsModalOpen, setIsLocationsModalOpen] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -64,15 +66,26 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
         </p>
       </div>
 
-      {/* Search and Filters */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
-        <Input
-          placeholder={t("search_bookings_placeholder")}
-          className="pl-10 bg-card"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+      {/* Search and Filters & Manage Locations */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="relative max-w-md w-full">
+          <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
+          <Input
+            placeholder={t("search_bookings_placeholder")}
+            className="pl-10 bg-card"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setIsLocationsModalOpen(true)}
+          className="flex items-center gap-2 border-primary/40 text-primary hover:bg-primary/10 font-bold text-xs h-10 px-4 shrink-0 shadow-xs"
+        >
+          <MapPin className="h-4 w-4" />
+          <span>Manage Locations</span>
+        </Button>
       </div>
 
       {/* Booking History Table */}
@@ -336,6 +349,12 @@ export function BookingHistoryClient({ bookings }: BookingHistoryProps) {
           </div>
         </div>
       </Dialog>
+
+      {/* Location Manager Dialog for Admin */}
+      <LocationManagerDialog
+        isOpen={isLocationsModalOpen}
+        onClose={() => setIsLocationsModalOpen(false)}
+      />
     </div>
   );
 }

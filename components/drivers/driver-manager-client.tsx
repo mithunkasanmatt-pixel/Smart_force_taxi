@@ -19,6 +19,8 @@ import * as z from "zod";
 import { registerUser, updateDriverProfileAction } from "@/actions/register";
 import { Mail, Lock, CreditCard, Calendar, Briefcase, ShieldAlert, AlertCircle, Loader2, User as UserIcon, Eye, EyeOff, Upload, Pencil } from "lucide-react";
 import { isWeakPassword } from "@/lib/auth-utils";
+import { DEFAULT_BOOKING_LOCATIONS, BookingLocation } from "@/lib/locations";
+import { getBookingLocationsAction } from "@/actions/locations";
 
 const passwordValidation = z.string()
   .min(8, "Password must be at least 8 characters long")
@@ -354,12 +356,24 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
   };
 
 
+  const [locationsList, setLocationsList] = useState<BookingLocation[]>(DEFAULT_BOOKING_LOCATIONS);
+  const [isCustomPickup, setIsCustomPickup] = useState(false);
+  const [isCustomDrop, setIsCustomDrop] = useState(false);
+
+  useEffect(() => {
+    getBookingLocationsAction().then((locs) => {
+      if (locs && locs.length > 0) {
+        setLocationsList(locs);
+      }
+    });
+  }, []);
+
   const [bookingForm, setBookingForm] = useState({
     vehicleId: "",
     startTime: "",
     endTime: "",
-    pickup: "",
-    destination: "",
+    pickup: DEFAULT_BOOKING_LOCATIONS[0].name,
+    destination: DEFAULT_BOOKING_LOCATIONS[0].name,
     purpose: "Corporate Duty",
     notes: "",
   });
@@ -477,7 +491,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
   }, [bookingForm.vehicleId, isBookingOpen, fetchLiveBookings]);
 
   // Time format helper
-  const formatTo12Hour = (dateTimeStr: string) => {
+  const formatTo24Hour = (dateTimeStr: string) => {
     if (!dateTimeStr) return "HH:MM";
     const parts = dateTimeStr.split("T");
     if (parts.length < 2) return "HH:MM";
@@ -488,10 +502,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
     const minutes = timeParts[1];
     
     if (isNaN(hours)) return "HH:MM";
-    
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const displayHour = hours % 12 === 0 ? 12 : hours % 12;
-    return `${String(displayHour).padStart(2, '0')}:${minutes} ${ampm}`;
+    return `${String(hours).padStart(2, '0')}:${minutes}`;
   };
 
   // Generate 48 half-hour slots for the selectedDate
@@ -500,11 +511,11 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
     const nowTime = new Date();
     for (let hour = 0; hour < 24; hour++) {
       for (const minute of [0, 30]) {
-        const ampm = hour >= 12 ? "PM" : "AM";
-        const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-        const displayMinute = minute === 0 ? "00" : "30";
-
         const pad = (num: number) => String(num).padStart(2, '0');
+        const displayHour = pad(hour);
+        const displayMinute = minute === 0 ? "00" : "30";
+        const timeFormatted = `${displayHour}:${displayMinute}`;
+
         const startStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}T${pad(hour)}:${pad(minute)}`;
 
         let endHour = hour;
@@ -522,7 +533,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
         if (slotEndTime <= nowTime) continue;
 
         slots.push({
-          label: `${displayHour}:${displayMinute} ${ampm}`,
+          label: timeFormatted,
           startStr,
           endStr,
         });
@@ -1400,7 +1411,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
                     <div className="flex items-center gap-1.5 mt-1">
                       <Clock className="h-4 w-4 text-muted-foreground/60" />
                       <span className="text-sm font-extrabold text-foreground">
-                        {bookingForm.startTime ? formatTo12Hour(bookingForm.startTime) : "HH:MM"}
+                        {bookingForm.startTime ? formatTo24Hour(bookingForm.startTime) : "HH:MM"}
                       </span>
                     </div>
                   </div>
@@ -1417,7 +1428,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
                     <div className="flex items-center gap-1.5 mt-1">
                       <Clock className="h-4 w-4 text-muted-foreground/60" />
                       <span className="text-sm font-extrabold text-foreground">
-                        {bookingForm.endTime ? formatTo12Hour(bookingForm.endTime) : "HH:MM"}
+                        {bookingForm.endTime ? formatTo24Hour(bookingForm.endTime) : "HH:MM"}
                       </span>
                     </div>
                   </div>
@@ -1502,7 +1513,7 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
                         <div>
                           <span className="text-muted-foreground block text-[9px]">Schedule</span>
                           <span className="font-semibold" suppressHydrationWarning>
-                            {new Date(clickedBookedSlot.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {new Date(clickedBookedSlot.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            {new Date(clickedBookedSlot.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false})} - {new Date(clickedBookedSlot.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false})}
                           </span>
                         </div>
                       </div>
@@ -1513,23 +1524,112 @@ export function DriverManagerClient({ drivers, bookings, vehicles, performanceRe
                 {/* Form fields */}
                 <form onSubmit={handleBookingSubmit} className="space-y-4 border-t border-border/30 pt-4">
                   <div className="grid grid-cols-2 gap-4">
+                    {/* Pickup Location */}
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Pickup Location</label>
-                      <Input
-                        placeholder="Base Depot / Airport"
-                        value={bookingForm.pickup}
-                        onChange={(e) => setBookingForm({ ...bookingForm, pickup: e.target.value })}
-                        required
-                      />
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-muted-foreground">Pickup Location</label>
+                        {isCustomPickup && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsCustomPickup(false);
+                              setBookingForm({
+                                ...bookingForm,
+                                pickup: locationsList[0]?.name || DEFAULT_BOOKING_LOCATIONS[0].name,
+                              });
+                            }}
+                            className="text-[10px] text-primary hover:underline font-semibold"
+                          >
+                            Select preset
+                          </button>
+                        )}
+                      </div>
+                      {!isCustomPickup ? (
+                        <select
+                          value={bookingForm.pickup}
+                          onChange={(e) => {
+                            if (e.target.value === "__custom__") {
+                              setIsCustomPickup(true);
+                              setBookingForm({ ...bookingForm, pickup: "" });
+                            } else {
+                              setBookingForm({ ...bookingForm, pickup: e.target.value });
+                            }
+                          }}
+                          className="w-full h-10 rounded-md border border-input bg-card px-3 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                          required
+                        >
+                          {locationsList
+                            .filter((l) => l.type === "pickup" || l.type === "both")
+                            .map((loc) => (
+                              <option key={loc.id} value={loc.name}>
+                                {loc.name}
+                              </option>
+                            ))}
+                          <option value="__custom__">+ Other / Enter Custom...</option>
+                        </select>
+                      ) : (
+                        <Input
+                          placeholder="Type custom pickup location..."
+                          value={bookingForm.pickup}
+                          onChange={(e) => setBookingForm({ ...bookingForm, pickup: e.target.value })}
+                          autoFocus
+                          required
+                        />
+                      )}
                     </div>
+
+                    {/* Drop Location */}
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Drop Location</label>
-                      <Input
-                        placeholder="Hotel / Corporate Office"
-                        value={bookingForm.destination}
-                        onChange={(e) => setBookingForm({ ...bookingForm, destination: e.target.value })}
-                        required
-                      />
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-muted-foreground">Drop Location</label>
+                        {isCustomDrop && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsCustomDrop(false);
+                              setBookingForm({
+                                ...bookingForm,
+                                destination: locationsList[0]?.name || DEFAULT_BOOKING_LOCATIONS[0].name,
+                              });
+                            }}
+                            className="text-[10px] text-primary hover:underline font-semibold"
+                          >
+                            Select preset
+                          </button>
+                        )}
+                      </div>
+                      {!isCustomDrop ? (
+                        <select
+                          value={bookingForm.destination}
+                          onChange={(e) => {
+                            if (e.target.value === "__custom__") {
+                              setIsCustomDrop(true);
+                              setBookingForm({ ...bookingForm, destination: "" });
+                            } else {
+                              setBookingForm({ ...bookingForm, destination: e.target.value });
+                            }
+                          }}
+                          className="w-full h-10 rounded-md border border-input bg-card px-3 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                          required
+                        >
+                          {locationsList
+                            .filter((l) => l.type === "drop" || l.type === "both")
+                            .map((loc) => (
+                              <option key={loc.id} value={loc.name}>
+                                {loc.name}
+                              </option>
+                            ))}
+                          <option value="__custom__">+ Other / Enter Custom...</option>
+                        </select>
+                      ) : (
+                        <Input
+                          placeholder="Type custom drop location..."
+                          value={bookingForm.destination}
+                          onChange={(e) => setBookingForm({ ...bookingForm, destination: e.target.value })}
+                          autoFocus
+                          required
+                        />
+                      )}
                     </div>
                   </div>
 

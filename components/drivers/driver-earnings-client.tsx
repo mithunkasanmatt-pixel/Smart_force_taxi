@@ -27,6 +27,18 @@ interface DriverEarningsClientProps {
   initialEarnings: DriverEarning[];
 }
 
+const formatDate = (dateInput: Date | string) => {
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
+const formatWeekdayDate = (dateInput: Date | string) => {
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+};
+
 export function DriverEarningsClient({ driver, initialEarnings }: DriverEarningsClientProps) {
   const [isPending, startTransition] = useTransition();
 
@@ -332,8 +344,8 @@ export function DriverEarningsClient({ driver, initialEarnings }: DriverEarnings
                 <tbody className="divide-y divide-border/40">
                   {earningsList.map((item) => (
                     <tr key={item.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="p-3 font-semibold text-foreground whitespace-nowrap">
-                        {new Date(item.date).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
+                      <td className="p-3 font-semibold text-foreground whitespace-nowrap" suppressHydrationWarning>
+                        {formatDate(item.date)}
                       </td>
                       <td className="p-3 font-mono font-bold text-foreground whitespace-nowrap">
                         €{item.totalEarnings.toFixed(2)}
@@ -362,8 +374,8 @@ export function DriverEarningsClient({ driver, initialEarnings }: DriverEarnings
                 <div key={item.id} className="p-4 border border-border rounded-xl space-y-2 bg-muted/5">
                   <div className="flex justify-between items-start">
                     <div>
-                      <span className="text-xs font-bold text-foreground">
-                        {new Date(item.date).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                      <span className="text-xs font-bold text-foreground" suppressHydrationWarning>
+                        {formatWeekdayDate(item.date)}
                       </span>
                       {item.notes && <span className="text-[10px] text-muted-foreground block italic">{item.notes}</span>}
                     </div>
