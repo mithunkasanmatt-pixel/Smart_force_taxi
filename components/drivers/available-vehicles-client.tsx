@@ -79,12 +79,12 @@ export function AvailableVehiclesClient({
               </div>
 
               {/* Big Hero Vehicle Image */}
-              <div className="relative w-full h-44 sm:h-52 rounded-2xl overflow-hidden bg-muted/20 border border-border/40">
+              <div className="relative w-full h-44 sm:h-52 rounded-2xl overflow-hidden bg-muted/15 border border-border/40 flex items-center justify-center p-2">
                 {vehicle.imageUrl ? (
                   <img
                     src={vehicle.imageUrl}
                     alt={vehicle.name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                   />
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground/40 gap-2">

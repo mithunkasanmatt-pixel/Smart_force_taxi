@@ -51,7 +51,7 @@ export function DriverNavbar() {
       </nav>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="md:hidden flex fixed bottom-0 left-0 right-0 h-16 bg-card border-t border-border justify-around items-center z-50 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] pb-safe">
+      <nav className="md:hidden flex fixed bottom-0 left-0 right-0 h-16 bg-card border-t border-border justify-around items-center z-50 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] pb-[max(env(safe-area-inset-bottom),0.35rem)] px-1">
         {navLinks.map((link) => {
           const isActive = activeTab === link.id;
           const Icon = link.icon;
@@ -64,17 +64,17 @@ export function DriverNavbar() {
                 setActiveTab(link.id);
               }}
               className={cn(
-                "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-all text-center gap-0.5 relative cursor-pointer",
+                "flex flex-col items-center justify-center flex-1 min-w-0 h-full py-1 transition-all text-center gap-1 relative cursor-pointer select-none",
                 isActive 
                   ? "text-primary font-bold" 
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
               {isActive && (
-                <span className="absolute top-0 w-8 h-1 bg-primary rounded-full" />
+                <span className="absolute top-0 w-8 h-1 bg-primary rounded-full shadow-sm" />
               )}
-              <Icon className={cn("h-5 w-5 shrink-0", isActive && "scale-110 transition-transform")} />
-              <span className="text-[9px] tracking-tight uppercase font-bold leading-none truncate max-w-[54px]">
+              <Icon className={cn("h-4.5 w-4.5 sm:h-5 sm:w-5 shrink-0 transition-transform", isActive && "scale-110")} />
+              <span className="text-[9.5px] sm:text-[10px] tracking-tight font-semibold leading-none text-center whitespace-nowrap">
                 {link.mobileLabel || link.label}
               </span>
             </Link>

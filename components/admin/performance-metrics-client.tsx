@@ -12,7 +12,7 @@ import {
   CheckCircle2,
   Plus,
   Search,
-  DollarSign,
+  Euro,
   UserCheck,
   Trash2,
   Calendar,
@@ -914,12 +914,12 @@ export function PerformanceMetricsAdminClient({
               Bonus Rewards Distributed
             </span>
             <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
-              <DollarSign className="h-4 w-4" />
+              <Euro className="h-4 w-4" />
             </div>
           </div>
           <div className="mt-2">
             <span className="text-2xl font-extrabold text-foreground">
-              ${totalRewardsAmount.toLocaleString()}
+              €{totalRewardsAmount.toLocaleString()}
             </span>
           </div>
         </div>
@@ -1445,7 +1445,7 @@ export function PerformanceMetricsAdminClient({
                           </span>
                           {item.rewardGranted && (
                             <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-medium flex items-center gap-1">
-                              <Zap className="h-3 w-3" /> Bonus (${item.rewardAmount})
+                              <Zap className="h-3 w-3" /> Bonus (€{item.rewardAmount})
                             </span>
                           )}
                         </div>
@@ -1784,7 +1784,7 @@ export function PerformanceMetricsAdminClient({
                           {record.rewardGranted ? (
                             <div className="flex flex-col">
                               <span className="font-bold text-emerald-500 flex items-center gap-1">
-                                <DollarSign className="h-3 w-3" /> ${record.rewardAmount}
+                                <Euro className="h-3 w-3" /> €{record.rewardAmount}
                               </span>
                               <span className="text-[10px] text-muted-foreground">
                                 {record.rewardTitle}
@@ -1880,7 +1880,7 @@ export function PerformanceMetricsAdminClient({
 
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">
-                  Bonus Amount ($) *
+                  Bonus Amount (€) *
                 </label>
                 <input
                   type="number"

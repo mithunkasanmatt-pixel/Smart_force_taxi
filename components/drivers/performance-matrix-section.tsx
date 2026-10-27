@@ -4,7 +4,7 @@ import React from "react";
 import {
   Trophy,
   Award,
-  DollarSign,
+  Euro,
   TrendingUp,
   Sparkles,
   CheckCircle2,
@@ -117,7 +117,7 @@ export function PerformanceMatrixSection({
         {rewardGranted ? (
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold">
             <Sparkles className="h-3.5 w-3.5" />
-            Bonus Paid (${rewardAmount})
+            Bonus Paid (€{rewardAmount})
           </div>
         ) : (
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-muted-foreground border border-border text-xs font-semibold">
@@ -163,7 +163,7 @@ export function PerformanceMatrixSection({
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
               Bonus Amount Received
             </span>
-            <DollarSign className="h-4 w-4 text-emerald-500" />
+            <Euro className="h-4 w-4 text-emerald-500" />
           </div>
           <div className="flex items-baseline gap-2">
             <span
@@ -172,7 +172,7 @@ export function PerformanceMatrixSection({
                 rewardGranted ? "text-emerald-500" : "text-foreground"
               )}
             >
-              ${rewardAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              €{rewardAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <span className="text-xs text-muted-foreground">
               {rewardGranted ? "Granted" : "No Bonus"}
@@ -246,7 +246,7 @@ export function PerformanceMatrixSection({
                 Bonus Amount
               </span>
               <strong className="text-emerald-600 dark:text-emerald-400 text-sm font-mono block mt-0.5">
-                ${rewardAmount.toFixed(2)}
+                €{rewardAmount.toFixed(2)}
               </strong>
             </div>
 

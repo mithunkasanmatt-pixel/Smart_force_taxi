@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Check, Shield, MapPin, BadgeDollarSign, ShieldAlert } from "lucide-react";
+import { Check, Shield, MapPin, BadgeEuro, ShieldAlert } from "lucide-react";
 import { useTranslation } from "@/components/layout/language-provider";
 
 export default function WhyChooseUsSection() {
@@ -19,7 +19,7 @@ export default function WhyChooseUsSection() {
       description: t("pillar_tracking_desc"),
     },
     {
-      icon: <BadgeDollarSign className="w-5 h-5 text-amber-500" />,
+      icon: <BadgeEuro className="w-5 h-5 text-amber-500" />,
       title: t("pillar_fuel_title"),
       description: t("pillar_fuel_desc"),
     },
