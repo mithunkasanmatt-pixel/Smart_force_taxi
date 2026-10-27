@@ -121,6 +121,12 @@ export function DriverMyBookingsClient({
     setAllDriverBookings(initialBookings);
   }, [initialBookings]);
 
+  useEffect(() => {
+    if (initialFleetBookings && initialFleetBookings.length > 0) {
+      setLiveBookings(initialFleetBookings);
+    }
+  }, [initialFleetBookings]);
+
   // Calendar states
   const [currentMonth, setCurrentMonth] = useState<Date>(() => {
     const d = new Date();
@@ -174,7 +180,10 @@ export function DriverMyBookingsClient({
       if (!res.ok) return;
       const data = await res.json();
       if (data.bookings) {
-        setLiveBookings(data.bookings);
+        setLiveBookings((prev) => {
+          const others = prev.filter((b) => b.vehicleId !== vehicleId);
+          return [...others, ...data.bookings];
+        });
         setLastRefreshed(new Date());
       }
     } catch {
@@ -273,20 +282,14 @@ export function DriverMyBookingsClient({
         const displayMinute = minute === 0 ? "00" : "30";
         const timeFormatted = `${displayHour}:${displayMinute}`;
 
-        const startStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}T${pad(hour)}:${pad(minute)}`;
+        const slotStartDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), hour, minute, 0, 0);
+        const slotEndDate = new Date(slotStartDate.getTime() + 30 * 60 * 1000);
 
-        let endHour = hour;
-        let endMinute = minute + 30;
-        if (endMinute === 60) {
-          endHour = (hour + 1) % 24;
-          endMinute = 0;
-        }
-        const endStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}T${pad(endHour)}:${pad(endMinute)}`;
-
-        const slotEndTime = new Date(endStr);
+        const startStr = `${slotStartDate.getFullYear()}-${pad(slotStartDate.getMonth() + 1)}-${pad(slotStartDate.getDate())}T${pad(slotStartDate.getHours())}:${pad(slotStartDate.getMinutes())}`;
+        const endStr = `${slotEndDate.getFullYear()}-${pad(slotEndDate.getMonth() + 1)}-${pad(slotEndDate.getDate())}T${pad(slotEndDate.getHours())}:${pad(slotEndDate.getMinutes())}`;
 
         // Skip past slots for today
-        if (isTodayDate && slotEndTime <= now) continue;
+        if (isTodayDate && slotEndDate <= now) continue;
 
         slots.push({
           label: timeFormatted,
@@ -923,7 +926,7 @@ export function DriverMyBookingsClient({
       {/* ========================================================================= */}
       {showBookingSection && !selectedVehicle && (
         <Card id="vehicle-booking-section" className="border-border bg-card text-foreground shadow-sm rounded-3xl overflow-hidden animate-fade-in scroll-mt-6 p-4 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-border/30 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border/30 pb-3 gap-3">
             <div>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Truck className="h-4 w-4 sm:h-5 sm:w-5 text-primary shrink-0" />
@@ -933,18 +936,63 @@ export function DriverMyBookingsClient({
                 Choose a vehicle to view its schedule and book available time slots
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowBookingSection(false)}
-              className="h-7 w-7 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
-              title="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+              {/* Responsive Vehicle Filter Bar */}
+              <div className="overflow-x-auto no-scrollbar scrollbar-none pb-0.5 flex-1 sm:flex-initial">
+                <div className="flex items-center gap-1.5 sm:gap-2 bg-muted/20 p-1 sm:p-1.5 rounded-xl border border-border/40 text-xs font-bold min-w-max">
+                  <button 
+                    type="button"
+                    onClick={() => setVehicleFilter("ALL")}
+                    className={cn(
+                      "px-2.5 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap text-center text-xs shrink-0 select-none",
+                      vehicleFilter === "ALL" 
+                        ? "bg-primary text-white shadow-sm font-bold" 
+                        : "text-muted-foreground hover:text-foreground font-medium"
+                    )}
+                  >
+                    All ({vehicles.length})
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setVehicleFilter("AVAILABLE")}
+                    className={cn(
+                      "px-2.5 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap text-center text-xs shrink-0 select-none",
+                      vehicleFilter === "AVAILABLE" 
+                        ? "bg-green-600 text-white shadow-sm font-bold" 
+                        : "text-muted-foreground hover:text-foreground font-medium"
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-green-400 shrink-0" />
+                    <span>Available ({availableCount})</span>
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setVehicleFilter("ON_TRIP")}
+                    className={cn(
+                      "px-2.5 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap text-center text-xs shrink-0 select-none",
+                      vehicleFilter === "ON_TRIP" 
+                        ? "bg-blue-600 text-white shadow-sm font-bold" 
+                        : "text-muted-foreground hover:text-foreground font-medium"
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-blue-400 shrink-0" />
+                    <span>On-Trip ({onTripCount})</span>
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBookingSection(false)}
+                className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4 pt-1">
-            {vehicles.map((car) => {
+            {filteredVehicles.map((car) => {
               const isAssigned = propAssignedVehicle?.id === car.id;
               const carImg = (car as any).imageUrl;
 
@@ -963,12 +1011,12 @@ export function DriverMyBookingsClient({
                       : "border-border bg-card hover:border-primary/40 hover:bg-muted/10 hover:shadow-xs"
                   )}
                 >
-                  <div className="relative w-full h-28 sm:h-32 bg-muted/20 overflow-hidden border-b border-border/40">
+                  <div className="relative w-full h-28 sm:h-32 bg-muted/15 overflow-hidden border-b border-border/40 flex items-center justify-center p-1.5">
                     {carImg ? (
                       <img 
                         src={carImg} 
                         alt={car.name} 
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
+                        className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105" 
                         loading="lazy"
                       />
                     ) : (
@@ -1059,15 +1107,15 @@ export function DriverMyBookingsClient({
                 className={cn(
                   "relative border rounded-2xl p-3 sm:p-4 flex flex-col justify-between shadow-2xs cursor-pointer transition-all",
                   activeField === "from"
-                    ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-border bg-card hover:border-primary/50 text-muted-foreground"
+                    ? "border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500"
+                    : "border-border bg-card hover:border-emerald-500/50 text-muted-foreground"
                 )}
               >
                 <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">From</span>
                 <div className="flex items-center gap-2 mt-1">
-                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground/60 shrink-0" />
+                  <Clock className={cn("h-4 w-4 sm:h-5 sm:w-5 shrink-0", activeField === "from" ? "text-emerald-500" : "text-muted-foreground/60")} />
                   <span className="text-sm sm:text-base font-extrabold text-foreground">
-                    {mounted && bookingTimes.startTime ? formatTo24Hour(bookingTimes.startTime) : "00:00"}
+                    {mounted && bookingTimes.startTime ? formatTo24Hour(bookingTimes.startTime) : "HH:MM"}
                   </span>
                 </div>
               </div>
@@ -1077,13 +1125,13 @@ export function DriverMyBookingsClient({
                 className={cn(
                   "relative border rounded-2xl p-3 sm:p-4 flex flex-col justify-between shadow-2xs cursor-pointer transition-all",
                   activeField === "to"
-                    ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-border bg-card hover:border-primary/50 text-muted-foreground"
+                    ? "border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500"
+                    : "border-border bg-card hover:border-emerald-500/50 text-muted-foreground"
                 )}
               >
                 <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">To</span>
                 <div className="flex items-center gap-2 mt-1">
-                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground/60 shrink-0" />
+                  <Clock className={cn("h-4 w-4 sm:h-5 sm:w-5 shrink-0", activeField === "to" ? "text-emerald-500" : "text-muted-foreground/60")} />
                   <span className="text-sm sm:text-base font-extrabold text-foreground">
                     {mounted && bookingTimes.endTime ? formatTo24Hour(bookingTimes.endTime) : "HH:MM"}
                   </span>
@@ -1110,8 +1158,8 @@ export function DriverMyBookingsClient({
                     <span className="font-semibold text-emerald-600 dark:text-emerald-400">Selected</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="h-2.5 w-2.5 rounded-sm border-2 border-amber-500 bg-amber-500/20" />
-                    <span className="font-semibold text-amber-600 dark:text-amber-400">Your Booking</span>
+                    <span className="h-2.5 w-2.5 rounded-sm border-2 border-slate-400 dark:border-slate-500 bg-slate-300/60 dark:bg-slate-700" />
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">Your Booking</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="h-2.5 w-2.5 rounded-sm border border-red-500/30 bg-red-500/15" />
@@ -1139,18 +1187,17 @@ export function DriverMyBookingsClient({
                     <button
                       key={index}
                       type="button"
-                      disabled={isOtherBooking}
                       title={
                         isMyBooking
                           ? "Your booking (Click to view details)"
                           : isOtherBooking
-                            ? `Booked by ${(booking as any)?.driver?.name || (booking as any)?.requestedBy || 'another driver'}`
+                            ? `Booked by ${(booking as any)?.driver?.name || (booking as any)?.requestedBy || 'another driver'} (Click to view details)`
                             : `Available slot ${slot.label}`
                       }
                       onClick={() => {
-                        if (isMyBooking) {
-                          setClickedBookedSlot(booking);
-                        } else if (!isOtherBooking) {
+                        if (isMyBooking || isOtherBooking) {
+                          setClickedBookedSlot((prev) => (prev?.id === booking?.id ? null : (booking as TripWithRelations)));
+                        } else {
                           handleSlotClick(slot);
                         }
                       }}
@@ -1159,9 +1206,9 @@ export function DriverMyBookingsClient({
                         isSelectedSlot
                           ? "border-2 border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs ring-2 ring-emerald-500/20 cursor-pointer"
                           : isMyBooking
-                            ? "border-2 border-amber-500 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold shadow-xs hover:bg-amber-500/25 cursor-pointer"
+                            ? "border-2 border-slate-400 dark:border-slate-500 bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold shadow-xs hover:bg-slate-300/80 dark:hover:bg-slate-700/80 cursor-pointer"
                             : isOtherBooking
-                              ? "border border-red-500/25 bg-red-500/10 text-red-500 dark:text-red-400 cursor-not-allowed opacity-75"
+                              ? "border border-red-500/30 bg-red-500/10 text-red-500 dark:text-red-400 cursor-pointer hover:bg-red-500/20 active:scale-95"
                               : "border border-slate-200 dark:border-slate-800 bg-card hover:border-primary/50 hover:bg-primary/5 text-foreground cursor-pointer"
                       )}
                     >
@@ -1173,6 +1220,63 @@ export function DriverMyBookingsClient({
                   );
                 })}
               </div>
+
+              {/* Clicked Booked Slot Detail Card */}
+              {clickedBookedSlot && (
+                <div className={cn(
+                  "border p-3.5 sm:p-4 rounded-2xl text-xs space-y-2.5 transition-all animate-in fade-in slide-in-from-top-1",
+                  (clickedBookedSlot.driverId === driver.id || clickedBookedSlot.driver?.id === driver.id)
+                    ? "bg-slate-500/10 border-slate-400/40 text-foreground"
+                    : "bg-red-500/10 border-red-500/30 text-foreground"
+                )}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      {(clickedBookedSlot.driverId === driver.id || clickedBookedSlot.driver?.id === driver.id) ? (
+                        <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                          <CheckCircle2 className="h-4 w-4 text-slate-600 dark:text-slate-400" /> Your Booking Details
+                        </span>
+                      ) : (
+                        <span className="text-red-500 flex items-center gap-1.5">
+                          <AlertCircle className="h-4 w-4" /> Car Reserved by Another Driver
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setClickedBookedSlot(null)}
+                      className="text-muted-foreground hover:text-foreground text-[11px] px-2 py-0.5 rounded-lg border border-border/40 hover:bg-card transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                    <div>
+                      <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Booked By</span>
+                      <span className="font-bold text-foreground">
+                        {clickedBookedSlot.driver?.name || clickedBookedSlot.requestedBy || "Another Driver"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Vehicle</span>
+                      <span className="font-semibold text-foreground">
+                        {activeVehicleForDisplay?.name || "Vehicle"} ({activeVehicleForDisplay?.vehicleNumber})
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Time Schedule</span>
+                      <span className="font-semibold text-foreground">
+                        {formatTo24Hour(clickedBookedSlot.startTime as any)} - {formatTo24Hour(clickedBookedSlot.endTime as any)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Purpose</span>
+                      <span className="font-semibold text-foreground">
+                        {clickedBookedSlot.purpose || "Duty Booking"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Booking Form */}
@@ -1442,7 +1546,7 @@ export function DriverMyBookingsClient({
                 const isPast = bEndTime < now;
                 const isUpcoming = !isPast && b.status !== "COMPLETED" && b.status !== "CANCELLED";
                 const diffHours = (bStartTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-                const canCancelDirectly = diffHours >= 12 && isUpcoming;
+                const canCancelDirectly = diffHours >= 24 && isUpcoming;
                 const isAdmin = b.assignedBy === "ADMIN" || b.status === "ASSIGNED" || (b.requestedBy && b.requestedBy.toUpperCase().includes("ADMIN"));
 
                 return (
@@ -1473,7 +1577,7 @@ export function DriverMyBookingsClient({
                         {isUpcoming && !canCancelDirectly && (
                           <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/80 bg-amber-50/80 dark:bg-amber-950/40 px-3 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap shrink-0">
                             <Clock className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                            <span>&lt;12h to start</span>
+                            <span>&lt;24h to start</span>
                           </div>
                         )}
 
@@ -1490,18 +1594,20 @@ export function DriverMyBookingsClient({
                     </div>
 
                     {/* Vehicle Card */}
-                    <div className="rounded-2xl border border-border/70 bg-muted/10 p-3 sm:p-3.5 flex items-center gap-3.5 shadow-xs">
+                    <div className="rounded-2xl border border-border/70 bg-muted/10 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3.5 sm:gap-5 shadow-xs">
                       {(b.vehicle as any)?.imageUrl ? (
-                        <img 
-                          src={(b.vehicle as any).imageUrl} 
-                          alt={b.vehicle?.name} 
-                          className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl object-cover border border-border shrink-0 cursor-zoom-in" 
-                          loading="lazy"
-                          onClick={() => setInspectedTrip(b)}
-                        />
+                        <div className="w-full sm:w-48 md:w-56 h-32 sm:h-28 md:h-32 rounded-xl border border-border/80 bg-background/80 dark:bg-muted/20 shrink-0 overflow-hidden flex items-center justify-center p-1.5 shadow-2xs">
+                          <img 
+                            src={(b.vehicle as any).imageUrl} 
+                            alt={b.vehicle?.name} 
+                            className="w-full h-full object-contain cursor-zoom-in transition-transform duration-200 hover:scale-105" 
+                            loading="lazy"
+                            onClick={() => setInspectedTrip(b)}
+                          />
+                        </div>
                       ) : (
-                        <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl bg-muted flex items-center justify-center border border-border shrink-0">
-                          <Truck className="h-8 w-8 text-muted-foreground" />
+                        <div className="w-full sm:w-48 md:w-56 h-32 sm:h-28 md:h-32 rounded-xl bg-muted flex items-center justify-center border border-border shrink-0">
+                          <Truck className="h-10 w-10 text-muted-foreground" />
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
@@ -1582,7 +1688,7 @@ export function DriverMyBookingsClient({
                         <div className="p-3 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-300/80 dark:border-amber-700/60 flex items-center justify-between text-xs">
                           <span className="text-amber-800 dark:text-amber-300 font-semibold flex items-center gap-1.5">
                             <Headphones className="h-4 w-4 text-amber-500 shrink-0" />
-                            Starts in &lt;12h (Admin Cancellation Only)
+                            Starts in &lt;24h (Admin Cancellation Only)
                           </span>
                           <a
                             href="tel:+358417297334"
@@ -1668,14 +1774,16 @@ export function DriverMyBookingsClient({
             {inspectedTrip.vehicle && (
               <div className="p-3.5 rounded-2xl border border-border/60 bg-card flex items-center gap-3">
                 {(inspectedTrip.vehicle as any)?.imageUrl ? (
-                  <img
-                    src={(inspectedTrip.vehicle as any).imageUrl}
-                    alt={inspectedTrip.vehicle.name}
-                    className="w-14 h-14 rounded-xl object-cover border border-border shrink-0"
-                  />
+                  <div className="w-28 sm:w-36 h-20 sm:h-24 rounded-xl border border-border/80 bg-background/80 dark:bg-muted/20 shrink-0 overflow-hidden flex items-center justify-center p-1 shadow-2xs">
+                    <img
+                      src={(inspectedTrip.vehicle as any).imageUrl}
+                      alt={inspectedTrip.vehicle.name}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
                 ) : (
-                  <div className="w-14 h-14 rounded-xl bg-muted flex items-center justify-center border border-border shrink-0">
-                    <Truck className="h-6 w-6 text-muted-foreground" />
+                  <div className="w-28 sm:w-36 h-20 sm:h-24 rounded-xl bg-muted flex items-center justify-center border border-border shrink-0">
+                    <Truck className="h-8 w-8 text-muted-foreground" />
                   </div>
                 )}
                 <div className="min-w-0 flex-1">

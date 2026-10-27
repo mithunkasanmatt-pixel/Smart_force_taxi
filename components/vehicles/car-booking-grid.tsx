@@ -534,8 +534,8 @@ export function CarBookingGrid({
               <span className="font-semibold text-emerald-600 dark:text-emerald-400">Selected</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="h-2.5 w-2.5 rounded-sm border-2 border-amber-500 bg-amber-500/20" />
-              <span className="font-semibold text-amber-600 dark:text-amber-400">Your Booking</span>
+              <span className="h-2.5 w-2.5 rounded-sm border-2 border-slate-400 dark:border-slate-500 bg-slate-300/60 dark:bg-slate-700" />
+              <span className="font-semibold text-slate-700 dark:text-slate-300">Your Booking</span>
             </div>
             <div className="flex items-center gap-1">
               <span className="h-2.5 w-2.5 rounded-sm border border-red-500/30 bg-red-500/15" />
@@ -583,7 +583,7 @@ export function CarBookingGrid({
                   isSelected
                     ? "border-2 border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs ring-2 ring-emerald-500/20 cursor-pointer"
                     : isMyBooking
-                      ? "border-2 border-amber-500 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold shadow-xs hover:bg-amber-500/25 cursor-pointer"
+                      ? "border-2 border-slate-400 dark:border-slate-500 bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold shadow-xs hover:bg-slate-300/80 dark:hover:bg-slate-700/80 cursor-pointer"
                       : isOtherBooking
                         ? "border border-red-500/25 bg-red-500/10 text-red-500 dark:text-red-400 cursor-not-allowed opacity-75"
                         : "border border-slate-200 dark:border-slate-800 bg-card hover:border-primary/50 hover:bg-primary/5 text-foreground cursor-pointer"

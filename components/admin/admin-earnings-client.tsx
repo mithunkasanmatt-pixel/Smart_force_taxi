@@ -3,7 +3,7 @@
 import React, { useState, useTransition, useMemo } from "react";
 import { User, DriverEarning } from "@prisma/client";
 import {
-  DollarSign,
+  Euro,
   Calculator,
   Search,
   Plus,

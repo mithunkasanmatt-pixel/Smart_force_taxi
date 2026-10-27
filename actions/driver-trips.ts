@@ -154,6 +154,7 @@ export async function bookCarAction(data: {
     revalidatePath("/driver");
     revalidatePath("/driver/bookings");
     revalidatePath("/admin");
+    revalidatePath("/admin/bookings");
     return { success: true };
   } catch (error: any) {
     console.error("Book car action error:", error);
@@ -206,6 +207,7 @@ export async function cancelBookingAction(tripId: string) {
     revalidatePath("/admin");
     revalidatePath("/admin/bookings");
     revalidatePath("/driver");
+    revalidatePath("/driver/bookings");
     return { success: true };
   } catch (error: any) {
     console.error("Cancel booking action error:", error);
@@ -257,6 +259,7 @@ export async function deleteBookingAction(tripId: string, name: string, email: s
     revalidatePath("/admin");
     revalidatePath("/admin/bookings");
     revalidatePath("/driver");
+    revalidatePath("/driver/bookings");
     return { success: true };
   } catch (error: any) {
     console.error("Delete booking action error:", error);
@@ -292,14 +295,14 @@ export async function cancelUserBookingAction(tripId: string) {
       return { error: "This booking is already cancelled." };
     }
 
-    // 12-hour cancellation restriction for driver self-service cancellation
+    // 24-hour cancellation restriction for driver self-service cancellation
     const now = new Date();
     const startTime = new Date(trip.startTime);
     const diffHours = (startTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    if (diffHours < 12) {
+    if (diffHours < 24) {
       return {
-        error: "Direct cancellation is unavailable because the booking start time is within 12 hours. Please contact Support to request cancellation.",
+        error: "Direct cancellation is unavailable because the booking start time is within 24 hours. Please contact Support to request cancellation.",
         requiresSupport: true,
       };
     }
@@ -331,7 +334,9 @@ export async function cancelUserBookingAction(tripId: string) {
     );
 
     revalidatePath("/driver");
+    revalidatePath("/driver/bookings");
     revalidatePath("/admin");
+    revalidatePath("/admin/bookings");
     return { success: true };
   } catch (error: any) {
     console.error("Cancel user booking action error:", error);
